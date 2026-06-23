@@ -62,6 +62,11 @@ export class AuroraSocket {
     else this.queue.push(data);
   }
 
+  /** Send raw audio bytes as a binary frame (dropped if socket not open). */
+  sendBinary(buffer: ArrayBuffer | Blob) {
+    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(buffer);
+  }
+
   get ready() {
     return this.ws?.readyState === WebSocket.OPEN;
   }

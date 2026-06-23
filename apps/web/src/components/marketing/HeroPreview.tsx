@@ -8,10 +8,10 @@ import {
 } from "lucide-react";
 
 const LINES = [
-  { speaker: "Mustafa Ali", text: "Let's align on the Q3 launch scope." },
-  { speaker: "Shaibaz Ansari", text: "Live transcription is stable — ship it." },
-  { speaker: "Ruknuddin Asrari", text: "Pair it with AI summaries for value." },
-  { speaker: "Haseebuddin", text: "I'll own action-item extraction." },
+  { speaker: "Justin Carter", text: "Let's align on the Q3 launch scope." },
+  { speaker: "Pat Reynolds", text: "Live transcription is stable — ship it." },
+  { speaker: "Emily Brooks", text: "Pair it with AI summaries for value." },
+  { speaker: "Rachel Morgan", text: "I'll own action-item extraction." },
 ];
 
 export function HeroPreview() {

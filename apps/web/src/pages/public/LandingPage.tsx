@@ -430,11 +430,11 @@ export function LandingPage() {
           </p>
           <div className="mt-8 flex items-center gap-3">
             <span className="grid h-11 w-11 place-items-center rounded-full bg-aurora-gradient font-semibold">
-              MA
+              JC
             </span>
             <div>
-              <p className="font-medium">Mustafa Ali</p>
-              <p className="text-sm text-white/50">Operations, The Career Insights</p>
+              <p className="font-medium">Justin Carter</p>
+              <p className="text-sm text-white/50">Director of Operations, Northwind</p>
             </div>
           </div>
         </div>

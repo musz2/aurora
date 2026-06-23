@@ -103,10 +103,10 @@ pnpm dev
 
 ### Demo login
 ```
-Email:    mustafa@aurora.ai
+Email:    justin@aurora.ai
 Password: password123
 ```
-(Other seeded users: shaibaz@, ruknuddin@, haseebuddin@ — same password.)
+(Other seeded demo users: pat@, emily@, rachel@aurora.ai — same password.)
 
 ---
 

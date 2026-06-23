@@ -60,7 +60,14 @@ export const SOCKET_EVENTS = {
   MEETING_STATUS: "meeting:status",
   TRANSCRIPT_SEGMENT: "transcript:segment",
   TRANSCRIPT_PARTIAL: "transcript:partial",
+  TRANSCRIPT_ERROR: "transcript:error",
+  AUDIO_ACK: "audio:ack",
+  DG_STATUS: "deepgram:status",
   AI_SUGGESTION: "ai:suggestion",
   AI_ERROR: "ai:error",
   RECORDING_WARNING: "recording:warning",
 } as const;
+
+/** Live session capture mode. "real" = mic+Deepgram, "demo" = sample only. */
+export const SESSION_MODES = ["real", "demo"] as const;
+export type SessionMode = (typeof SESSION_MODES)[number];

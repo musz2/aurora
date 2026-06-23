@@ -235,8 +235,8 @@ function mockSummary(title: string, transcript: TranscriptLine[]): SummaryResult
 
 function mockActionItems(transcript: TranscriptLine[]): ExtractedActionItem[] {
   const speakers = [...new Set(transcript.map((t) => t.speakerName))];
-  const a = speakers[0] ?? "Mustafa Ali";
-  const b = speakers[1] ?? "Shaibaz Ansari";
+  const a = speakers[0] ?? "Justin Carter";
+  const b = speakers[1] ?? "Pat Reynolds";
   const inDays = (d: number) =>
     new Date(Date.now() + d * 86400000).toISOString();
   return [

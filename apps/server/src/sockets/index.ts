@@ -1,10 +1,14 @@
 import type { Server } from "node:http";
-import { WebSocketServer, WebSocket } from "ws";
-import { SOCKET_EVENTS } from "@aurora/shared";
+import { WebSocketServer, WebSocket, type RawData } from "ws";
+import { SOCKET_EVENTS, type SessionMode } from "@aurora/shared";
 import { verifyAccessToken, type TokenPayload } from "../utils/jwt.js";
 import { prisma } from "../lib/prisma.js";
 import { TranscriptSimulator } from "../services/transcript.simulator.js";
 import { generateLiveSuggestion } from "../services/ai.service.js";
+import {
+  createLiveTranscription,
+  type LiveSttConnection,
+} from "../services/deepgram.service.js";
 import { hasDeepgram, hasOpenAI } from "../config/env.js";
 
 interface ClientMessage {
@@ -14,9 +18,18 @@ interface ClientMessage {
 
 interface Session {
   meetingId: string;
+  mode: SessionMode;
+  // demo
   simulator: TranscriptSimulator;
   wordTimer: NodeJS.Timeout | null;
   gapTimer: NodeJS.Timeout | null;
+  // real
+  dg: LiveSttConnection | null;
+  dgEvents: number;
+  receivedPackets: number;
+  startTime: number;
+  // interim accumulation for diarized real STT
+  interimSpeaker: string;
   stopped: boolean;
 }
 
@@ -46,9 +59,15 @@ export function attachSocketServer(server: Server) {
 
     const session: Session = {
       meetingId: "",
+      mode: "real",
       simulator: new TranscriptSimulator(),
       wordTimer: null,
       gapTimer: null,
+      dg: null,
+      dgEvents: 0,
+      receivedPackets: 0,
+      startTime: Date.now(),
+      interimSpeaker: "Speaker 1",
       stopped: false,
     };
 
@@ -59,11 +78,119 @@ export function attachSocketServer(server: Server) {
       session.gapTimer = null;
     };
 
-    /**
-     * Simulated low-latency engine. Streams each utterance word-by-word as
-     * interim (TRANSCRIPT_PARTIAL), then finalizes once (TRANSCRIPT_SEGMENT,
-     * persisted). Interim text is never saved as final.
-     */
+    const persistFinal = async (
+      speakerName: string,
+      text: string,
+      startTime: number
+    ): Promise<string> => {
+      let id = `tmp-${Date.now()}`;
+      if (!session.meetingId) return id;
+      try {
+        const saved = await prisma.transcriptSegment.create({
+          data: {
+            meetingId: session.meetingId,
+            speakerName,
+            text,
+            startTime,
+            endTime: startTime,
+            confidence: null,
+          },
+        });
+        id = saved.id;
+      } catch {
+        /* meeting may be ad-hoc */
+      }
+      return id;
+    };
+
+    /* ---------------------- REAL: Deepgram live STT ---------------------- */
+
+    const startRealSession = (meetingId: string) => {
+      session.meetingId = meetingId;
+      session.startTime = Date.now();
+      session.dgEvents = 0;
+      session.receivedPackets = 0;
+
+      if (!hasDeepgram) {
+        // Honest error — never fall back to demo transcript in a real session.
+        send(ws, SOCKET_EVENTS.TRANSCRIPT_ERROR, {
+          code: "stt_not_configured",
+          message:
+            "Live transcription is not configured. Set DEEPGRAM_API_KEY on the server to enable real speech-to-text.",
+        });
+        send(ws, SOCKET_EVENTS.MEETING_STATUS, {
+          meetingId,
+          status: "RECORDING",
+          state: "error",
+          engine: "none",
+        });
+        return;
+      }
+
+      send(ws, SOCKET_EVENTS.MEETING_STATUS, {
+        meetingId,
+        status: "RECORDING",
+        engine: "deepgram",
+        state: "listening",
+      });
+      send(ws, SOCKET_EVENTS.RECORDING_WARNING, {
+        message:
+          "Recording active. Ensure all participants have consented per your workspace policy.",
+      });
+
+      session.dg = createLiveTranscription({
+        onOpen: () =>
+          send(ws, SOCKET_EVENTS.DG_STATUS, { connected: true, events: 0 }),
+        onClose: () =>
+          send(ws, SOCKET_EVENTS.DG_STATUS, {
+            connected: false,
+            events: session.dgEvents,
+          }),
+        onError: (message) =>
+          send(ws, SOCKET_EVENTS.TRANSCRIPT_ERROR, {
+            code: "stt_error",
+            message,
+          }),
+        onTranscript: async (e) => {
+          if (session.stopped) return;
+          session.dgEvents += 1;
+          const speaker = e.speaker ?? session.interimSpeaker;
+          session.interimSpeaker = speaker;
+          const relStart = e.start;
+          if (e.isFinal) {
+            const id = await persistFinal(speaker, e.text, relStart);
+            send(ws, SOCKET_EVENTS.TRANSCRIPT_SEGMENT, {
+              id,
+              meetingId,
+              speakerName: speaker,
+              text: e.text,
+              startTime: relStart,
+              endTime: relStart,
+              isFinal: true,
+            });
+            send(ws, SOCKET_EVENTS.MEETING_STATUS, {
+              meetingId,
+              status: "RECORDING",
+              state: "live",
+            });
+          } else {
+            send(ws, SOCKET_EVENTS.TRANSCRIPT_PARTIAL, {
+              meetingId,
+              speakerName: speaker,
+              text: e.text,
+              isFinal: false,
+            });
+          }
+          send(ws, SOCKET_EVENTS.DG_STATUS, {
+            connected: session.dg?.isOpen() ?? false,
+            events: session.dgEvents,
+          });
+        },
+      });
+    };
+
+    /* -------------------------- DEMO: simulator -------------------------- */
+
     const speakUtterance = () => {
       if (session.stopped) return;
       if (!session.simulator.hasMore()) {
@@ -74,102 +201,94 @@ export function attachSocketServer(server: Server) {
         });
         return;
       }
-
       const utt = session.simulator.next();
       const words = utt.text.split(" ");
       let i = 0;
-
       send(ws, SOCKET_EVENTS.MEETING_STATUS, {
         meetingId: session.meetingId,
         status: "RECORDING",
         state: "listening",
       });
-
       const revealWord = () => {
         if (session.stopped) return;
         i += 1;
-        const interim = words.slice(0, i).join(" ");
         send(ws, SOCKET_EVENTS.TRANSCRIPT_PARTIAL, {
           meetingId: session.meetingId,
           speakerName: utt.speakerName,
-          text: interim,
+          text: words.slice(0, i).join(" "),
           isFinal: false,
         });
         if (i < words.length) {
-          // 90–190ms per word feels fast and natural.
           session.wordTimer = setTimeout(revealWord, 90 + Math.random() * 100);
         } else {
-          // Endpointing: short silence, then finalize.
           send(ws, SOCKET_EVENTS.MEETING_STATUS, {
             meetingId: session.meetingId,
             status: "RECORDING",
             state: "processing",
           });
-          session.gapTimer = setTimeout(finalizeUtterance.bind(null, utt), 380);
-        }
-      };
-      revealWord();
-    };
-
-    const finalizeUtterance = async (utt: {
-      speakerName: string;
-      text: string;
-      startTime: number;
-      endTime: number;
-      confidence: number;
-    }) => {
-      if (session.stopped) return;
-      let id = `tmp-${Date.now()}`;
-      try {
-        if (session.meetingId) {
-          const saved = await prisma.transcriptSegment.create({
-            data: {
+          session.gapTimer = setTimeout(async () => {
+            if (session.stopped) return;
+            const id = await persistFinal(
+              utt.speakerName,
+              utt.text,
+              utt.startTime
+            );
+            send(ws, SOCKET_EVENTS.TRANSCRIPT_SEGMENT, {
+              id,
               meetingId: session.meetingId,
               speakerName: utt.speakerName,
               text: utt.text,
               startTime: utt.startTime,
               endTime: utt.endTime,
-              confidence: utt.confidence,
-            },
-          });
-          id = saved.id;
+              isFinal: true,
+            });
+            session.gapTimer = setTimeout(
+              speakUtterance,
+              500 + Math.random() * 400
+            );
+          }, 380);
         }
-      } catch {
-        /* meeting may be ad-hoc; still stream to UI */
-      }
-      send(ws, SOCKET_EVENTS.TRANSCRIPT_SEGMENT, {
-        id,
-        meetingId: session.meetingId,
-        speakerName: utt.speakerName,
-        text: utt.text,
-        startTime: utt.startTime,
-        endTime: utt.endTime,
-        confidence: utt.confidence,
-        isFinal: true,
-      });
-      // Pause between speakers, then continue.
-      session.gapTimer = setTimeout(speakUtterance, 500 + Math.random() * 400);
+      };
+      revealWord();
     };
 
-    const startSimulation = async (meetingId: string) => {
+    const startDemoSession = async (meetingId: string) => {
       session.meetingId = meetingId;
       session.simulator = new TranscriptSimulator();
-      session.stopped = false;
       send(ws, SOCKET_EVENTS.MEETING_STATUS, {
         meetingId,
         status: "RECORDING",
-        engine: hasDeepgram ? "deepgram" : "simulated",
+        engine: "simulated",
         state: "live",
-      });
-      send(ws, SOCKET_EVENTS.RECORDING_WARNING, {
-        message:
-          "Recording active. Ensure all participants have consented per your workspace policy.",
       });
       clearTimers();
       speakUtterance();
     };
 
-    ws.on("message", async (raw) => {
+    const stopAll = () => {
+      session.stopped = true;
+      clearTimers();
+      session.dg?.finish();
+      send(ws, SOCKET_EVENTS.MEETING_STATUS, {
+        meetingId: session.meetingId,
+        status: "PROCESSING",
+        state: "finalized",
+      });
+    };
+
+    ws.on("message", async (raw: RawData, isBinary: boolean) => {
+      // Binary frames = raw audio chunks from the browser → forward to Deepgram.
+      if (isBinary) {
+        session.receivedPackets += 1;
+        if (session.dg) session.dg.send(raw as Buffer);
+        if (session.receivedPackets % 10 === 0) {
+          send(ws, SOCKET_EVENTS.AUDIO_ACK, {
+            received: session.receivedPackets,
+          });
+        }
+        return;
+      }
+
       let msg: ClientMessage;
       try {
         msg = JSON.parse(raw.toString());
@@ -180,6 +299,9 @@ export function attachSocketServer(server: Server) {
       switch (msg.type) {
         case SOCKET_EVENTS.MEETING_START: {
           const meetingId = (msg.payload?.meetingId as string) ?? "";
+          const mode = (msg.payload?.mode as SessionMode) ?? "real";
+          session.mode = mode;
+          session.stopped = false;
           if (meetingId) {
             await prisma.meeting
               .update({
@@ -188,26 +310,21 @@ export function attachSocketServer(server: Server) {
               })
               .catch(() => null);
           }
-          await startSimulation(meetingId);
+          if (mode === "demo") await startDemoSession(meetingId);
+          else startRealSession(meetingId);
           break;
         }
         case SOCKET_EVENTS.MEETING_STOP: {
-          session.stopped = true;
-          clearTimers();
-          send(ws, SOCKET_EVENTS.MEETING_STATUS, {
-            meetingId: session.meetingId,
-            status: "PROCESSING",
-            state: "finalized",
-          });
+          stopAll();
           break;
         }
         case SOCKET_EVENTS.TRANSCRIPT_AUDIO_CHUNK: {
-          // Real audio bytes would be forwarded to Deepgram/Whisper here.
+          // Audio is sent as binary frames (handled above). This text event is
+          // kept for protocol compatibility.
           break;
         }
         case SOCKET_EVENTS.AI_ASK_LIVE: {
           const question = (msg.payload?.question as string) ?? "";
-          // Honest gating: never fabricate a "real" AI answer when no key is set.
           if (!hasOpenAI) {
             send(ws, SOCKET_EVENTS.AI_SUGGESTION, {
               question,
@@ -244,10 +361,12 @@ export function attachSocketServer(server: Server) {
     ws.on("close", () => {
       session.stopped = true;
       clearTimers();
+      session.dg?.finish();
     });
     ws.on("error", () => {
       session.stopped = true;
       clearTimers();
+      session.dg?.finish();
     });
   });
 

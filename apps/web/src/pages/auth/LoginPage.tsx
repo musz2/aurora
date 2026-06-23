@@ -10,7 +10,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation() as { state?: { from?: string } };
   const setAuth = useAuthStore((s) => s.setAuth);
-  const [email, setEmail] = useState("mustafa@aurora.ai");
+  const [email, setEmail] = useState("justin@aurora.ai");
   const [password, setPassword] = useState("password123");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");

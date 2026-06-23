@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 
 const PASSWORD = "password123";
 
-const SPEAKERS = ["Mustafa Ali", "Shaibaz Ansari", "Ruknuddin Asrari", "Haseebuddin"];
+const SPEAKERS = ["Justin Carter", "Pat Reynolds", "Emily Brooks", "Rachel Morgan"];
 
 interface SeedMeeting {
   title: string;
@@ -35,13 +35,13 @@ const MEETINGS: SeedMeeting[] = [
     daysAgo: 1,
     duration: 1820,
     lines: [
-      ["Mustafa Ali", "Thanks everyone for joining the product planning call. Let's align on Q3 priorities."],
-      ["Shaibaz Ansari", "The live transcription pipeline is stable. I think we ship it as the headline feature."],
-      ["Ruknuddin Asrari", "Agreed. We should pair it with AI summaries so the value is obvious in the first session."],
-      ["Haseebuddin", "I can own the action-item extraction work and make sure owners and due dates are captured."],
-      ["Mustafa Ali", "Perfect. Let's also make cross-meeting search a launch requirement for The Career Insights demo."],
-      ["Shaibaz Ansari", "I'll prepare the draft roadmap doc and share it before the next sync."],
-      ["Mustafa Ali", "Great. Decision made: live transcription, AI summaries, and search are the Q3 launch scope."],
+      ["Justin Carter", "Thanks everyone for joining the product planning call. Let's align on Q3 priorities."],
+      ["Pat Reynolds", "The live transcription pipeline is stable. I think we ship it as the headline feature."],
+      ["Emily Brooks", "Agreed. We should pair it with AI summaries so the value is obvious in the first session."],
+      ["Rachel Morgan", "I can own the action-item extraction work and make sure owners and due dates are captured."],
+      ["Justin Carter", "Perfect. Let's also make cross-meeting search a launch requirement for The Career Insights demo."],
+      ["Pat Reynolds", "I'll prepare the draft roadmap doc and share it before the next sync."],
+      ["Justin Carter", "Great. Decision made: live transcription, AI summaries, and search are the Q3 launch scope."],
     ],
     overview:
       "The team aligned on the Q3 roadmap, agreeing that live transcription, AI summaries, and cross-meeting search form the launch scope. Ownership was assigned and a roadmap doc will be circulated before the next sync.",
@@ -56,9 +56,9 @@ const MEETINGS: SeedMeeting[] = [
       "Roadmap doc to be circulated before the next sync.",
     ],
     actionItems: [
-      { assignee: "Shaibaz Ansari", task: "Prepare and share the Q3 roadmap doc.", inDays: 2, priority: "HIGH", source: "I'll prepare the draft roadmap doc and share it before the next sync." },
-      { assignee: "Haseebuddin", task: "Own action-item extraction with owners and due dates.", inDays: 5, priority: "MEDIUM", source: "I can own the action-item extraction work." },
-      { assignee: "Mustafa Ali", task: "Confirm cross-meeting search scope for the client demo.", inDays: 3, priority: "MEDIUM", source: "Let's make cross-meeting search a launch requirement." },
+      { assignee: "Pat Reynolds", task: "Prepare and share the Q3 roadmap doc.", inDays: 2, priority: "HIGH", source: "I'll prepare the draft roadmap doc and share it before the next sync." },
+      { assignee: "Rachel Morgan", task: "Own action-item extraction with owners and due dates.", inDays: 5, priority: "MEDIUM", source: "I can own the action-item extraction work." },
+      { assignee: "Justin Carter", task: "Confirm cross-meeting search scope for the client demo.", inDays: 3, priority: "MEDIUM", source: "Let's make cross-meeting search a launch requirement." },
     ],
   },
   {
@@ -68,13 +68,13 @@ const MEETINGS: SeedMeeting[] = [
     daysAgo: 3,
     duration: 2450,
     lines: [
-      ["Mustafa Ali", "Thanks for taking the time. Tell us about how your team handles meeting notes today."],
-      ["Shaibaz Ansari", "Right now we rely on manual notes, and action items frequently get missed."],
-      ["Ruknuddin Asrari", "We'd want speaker identification and the ability to search past calls by topic."],
-      ["Mustafa Ali", "Aurora records, transcribes, identifies speakers, and lets you ask questions across every meeting."],
-      ["Shaibaz Ansari", "Pricing matters — we need predictable monthly minutes and team seats."],
-      ["Mustafa Ali", "The Business plan covers 6,000 monthly minutes with admin and team features."],
-      ["Ruknuddin Asrari", "Let's move forward with a pilot. Send over the proposal and next steps."],
+      ["Justin Carter", "Thanks for taking the time. Tell us about how your team handles meeting notes today."],
+      ["Pat Reynolds", "Right now we rely on manual notes, and action items frequently get missed."],
+      ["Emily Brooks", "We'd want speaker identification and the ability to search past calls by topic."],
+      ["Justin Carter", "Aurora records, transcribes, identifies speakers, and lets you ask questions across every meeting."],
+      ["Pat Reynolds", "Pricing matters — we need predictable monthly minutes and team seats."],
+      ["Justin Carter", "The Business plan covers 6,000 monthly minutes with admin and team features."],
+      ["Emily Brooks", "Let's move forward with a pilot. Send over the proposal and next steps."],
     ],
     overview:
       "Discovery call with The Career Insights surfaced pain around manual notes and missed action items. The client wants speaker identification and topic search, and is moving forward with a pilot on the Business plan.",
@@ -89,8 +89,8 @@ const MEETINGS: SeedMeeting[] = [
       "Send the proposal and next steps after the call.",
     ],
     actionItems: [
-      { assignee: "Mustafa Ali", task: "Send the pilot proposal to The Career Insights.", inDays: 1, priority: "HIGH", source: "Send over the proposal and next steps." },
-      { assignee: "Shaibaz Ansari", task: "Outline Business plan seat and minute allocation.", inDays: 2, priority: "MEDIUM", source: "We need predictable monthly minutes and team seats." },
+      { assignee: "Justin Carter", task: "Send the pilot proposal to The Career Insights.", inDays: 1, priority: "HIGH", source: "Send over the proposal and next steps." },
+      { assignee: "Pat Reynolds", task: "Outline Business plan seat and minute allocation.", inDays: 2, priority: "MEDIUM", source: "We need predictable monthly minutes and team seats." },
     ],
   },
   {
@@ -100,13 +100,13 @@ const MEETINGS: SeedMeeting[] = [
     daysAgo: 5,
     duration: 1950,
     lines: [
-      ["Mustafa Ali", "Welcome, thanks for joining. Let's start with your experience scaling infrastructure."],
-      ["Haseebuddin", "I've run Kubernetes clusters in production and managed Terraform across environments."],
-      ["Mustafa Ali", "How do you approach CI/CD for a fast-moving team?"],
-      ["Haseebuddin", "I standardize on a Jenkins pipeline with automated tests and gated deploys."],
-      ["Ruknuddin Asrari", "Tell us about a time you debugged a tough production incident."],
-      ["Haseebuddin", "We had a cascading failure; I traced it to a misconfigured autoscaler and fixed the policy."],
-      ["Mustafa Ali", "Great answers. We'll follow up with the team and next steps shortly."],
+      ["Justin Carter", "Welcome, thanks for joining. Let's start with your experience scaling infrastructure."],
+      ["Rachel Morgan", "I've run Kubernetes clusters in production and managed Terraform across environments."],
+      ["Justin Carter", "How do you approach CI/CD for a fast-moving team?"],
+      ["Rachel Morgan", "I standardize on a Jenkins pipeline with automated tests and gated deploys."],
+      ["Emily Brooks", "Tell us about a time you debugged a tough production incident."],
+      ["Rachel Morgan", "We had a cascading failure; I traced it to a misconfigured autoscaler and fixed the policy."],
+      ["Justin Carter", "Great answers. We'll follow up with the team and next steps shortly."],
     ],
     overview:
       "Technical screen for a senior platform engineer. The candidate demonstrated strong Kubernetes, Terraform, and CI/CD experience, and walked through a production incident with a clear resolution. The panel will follow up with next steps.",
@@ -119,8 +119,8 @@ const MEETINGS: SeedMeeting[] = [
       "Advance the candidate pending panel feedback.",
     ],
     actionItems: [
-      { assignee: "Mustafa Ali", task: "Collect panel feedback and decide on next round.", inDays: 2, priority: "HIGH", source: "We'll follow up with the team and next steps." },
-      { assignee: "Ruknuddin Asrari", task: "Share interview scorecard.", inDays: 1, priority: "MEDIUM", source: "Tell us about a time you debugged a tough production incident." },
+      { assignee: "Justin Carter", task: "Collect panel feedback and decide on next round.", inDays: 2, priority: "HIGH", source: "We'll follow up with the team and next steps." },
+      { assignee: "Emily Brooks", task: "Share interview scorecard.", inDays: 1, priority: "MEDIUM", source: "Tell us about a time you debugged a tough production incident." },
     ],
   },
   {
@@ -130,12 +130,12 @@ const MEETINGS: SeedMeeting[] = [
     daysAgo: 0,
     duration: 720,
     lines: [
-      ["Shaibaz Ansari", "Yesterday I finished the Terraform module for the recording workers."],
-      ["Haseebuddin", "I'll run the Jenkins pipeline to deploy it to staging this morning."],
-      ["Ruknuddin Asrari", "Redis cache is healthy; queue latency is well within target."],
-      ["Mustafa Ali", "Any blockers? We want the Salesforce integration card live this week."],
-      ["Shaibaz Ansari", "No blockers. I'll wire the integration connect flow after the deploy."],
-      ["Haseebuddin", "I'll monitor the rollout and report back in the channel."],
+      ["Pat Reynolds", "Yesterday I finished the Terraform module for the recording workers."],
+      ["Rachel Morgan", "I'll run the Jenkins pipeline to deploy it to staging this morning."],
+      ["Emily Brooks", "Redis cache is healthy; queue latency is well within target."],
+      ["Justin Carter", "Any blockers? We want the Salesforce integration card live this week."],
+      ["Pat Reynolds", "No blockers. I'll wire the integration connect flow after the deploy."],
+      ["Rachel Morgan", "I'll monitor the rollout and report back in the channel."],
     ],
     overview:
       "DevOps standup covered the Terraform module completion for recording workers, a staging deploy via Jenkins, and healthy Redis queue latency. No blockers; the Salesforce integration connect flow is next.",
@@ -150,8 +150,8 @@ const MEETINGS: SeedMeeting[] = [
       "Ship the Salesforce integration card this week.",
     ],
     actionItems: [
-      { assignee: "Haseebuddin", task: "Run the Jenkins pipeline to deploy workers to staging.", inDays: 0, priority: "HIGH", source: "I'll run the Jenkins pipeline to deploy it to staging." },
-      { assignee: "Shaibaz Ansari", task: "Wire the Salesforce integration connect flow.", inDays: 2, priority: "MEDIUM", source: "I'll wire the integration connect flow after the deploy." },
+      { assignee: "Rachel Morgan", task: "Run the Jenkins pipeline to deploy workers to staging.", inDays: 0, priority: "HIGH", source: "I'll run the Jenkins pipeline to deploy it to staging." },
+      { assignee: "Pat Reynolds", task: "Wire the Salesforce integration connect flow.", inDays: 2, priority: "MEDIUM", source: "I'll wire the integration connect flow after the deploy." },
     ],
   },
 ];
@@ -330,7 +330,7 @@ async function main() {
 
   console.log("✅ Seed complete.");
   console.log(`   Workspace: ${workspace.name}`);
-  console.log(`   Login:     mustafa@aurora.ai / ${PASSWORD}`);
+  console.log(`   Login:     justin@aurora.ai / ${PASSWORD}`);
 }
 
 main()
