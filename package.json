@@ -1,0 +1,20 @@
+{
+  "name": "aurora-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Aurora.ai — AI Meeting Assistant & Meeting Knowledge Platform",
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "dev": "pnpm -r --parallel --filter=./apps/* dev",
+    "build": "pnpm --filter @aurora/shared build && pnpm --filter @aurora/server build && pnpm --filter @aurora/web build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm -r typecheck",
+    "db:migrate": "pnpm --filter @aurora/server db:migrate",
+    "db:seed": "pnpm --filter @aurora/server db:seed",
+    "db:studio": "pnpm --filter @aurora/server db:studio",
+    "db:generate": "pnpm --filter @aurora/server db:generate"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

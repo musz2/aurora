@@ -1,0 +1,288 @@
+// Aurora.ai — Prisma schema
+// Vector search note: the Postgres image ships with pgvector. For production,
+// add an `embedding vector(1536)` column to TranscriptSegment via a raw migration
+// and an IVFFlat index. The schema below is structured so that semantic search can
+// be layered on without changing application code (segments already carry text).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum MemberStatus {
+  ACTIVE
+  INVITED
+  DISABLED
+}
+
+enum Plan {
+  BASIC
+  PRO
+  BUSINESS
+  ENTERPRISE
+}
+
+enum MeetingSource {
+  LIVE
+  UPLOAD
+  ZOOM
+  MEET
+  TEAMS
+}
+
+enum MeetingStatus {
+  SCHEDULED
+  RECORDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum ActionItemPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ActionItemStatus {
+  OPEN
+  IN_PROGRESS
+  DONE
+}
+
+enum IntegrationStatus {
+  CONNECTED
+  DISCONNECTED
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELED
+}
+
+model User {
+  id           String            @id @default(cuid())
+  name         String
+  email        String            @unique
+  passwordHash String
+  avatarUrl    String?
+  role         WorkspaceRole     @default(MEMBER)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  memberships  WorkspaceMember[]
+  meetings     Meeting[]         @relation("MeetingCreator")
+  actionItems  ActionItem[]
+  chatMessages ChatMessage[]
+  usageRecords UsageRecord[]
+  auditLogs    AuditLog[]
+}
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  plan      Plan     @default(BASIC)
+  // Consent + recording policy
+  requireConsent      Boolean @default(true)
+  allPartyConsent     Boolean @default(false)
+  visibleIndicator    Boolean @default(true)
+  dataRetentionDays   Int     @default(0) // 0 = retain forever
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members       WorkspaceMember[]
+  meetings      Meeting[]
+  integrations  Integration[]
+  vocabulary    CustomVocabulary[]
+  subscription  BillingSubscription?
+  usageRecords  UsageRecord[]
+  chatMessages  ChatMessage[]
+  auditLogs     AuditLog[]
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  userId      String
+  workspaceId String
+  role        WorkspaceRole @default(MEMBER)
+  status      MemberStatus  @default(ACTIVE)
+  createdAt   DateTime      @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, workspaceId])
+}
+
+model Meeting {
+  id           String        @id @default(cuid())
+  workspaceId  String
+  title        String
+  description  String?
+  source       MeetingSource @default(LIVE)
+  status       MeetingStatus @default(SCHEDULED)
+  startedAt    DateTime?
+  endedAt      DateTime?
+  duration     Int           @default(0) // seconds
+  recordingUrl String?
+  tags         String[]      @default([])
+  participants String[]      @default([])
+  createdById  String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  workspace Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  createdBy User               @relation("MeetingCreator", fields: [createdById], references: [id])
+  segments  TranscriptSegment[]
+  summary   MeetingSummary?
+  actionItems ActionItem[]
+  chatMessages ChatMessage[]
+  usageRecords UsageRecord[]
+
+  @@index([workspaceId])
+  @@index([status])
+}
+
+model TranscriptSegment {
+  id         String   @id @default(cuid())
+  meetingId  String
+  speakerName String  @default("Speaker")
+  text       String
+  startTime  Float    @default(0)
+  endTime    Float    @default(0)
+  confidence Float?
+  createdAt  DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+}
+
+model MeetingSummary {
+  id           String   @id @default(cuid())
+  meetingId    String   @unique
+  overview     String
+  keyPoints    String[] @default([])
+  decisions    String[] @default([])
+  followUpEmail String
+  createdAt    DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+}
+
+model ActionItem {
+  id            String             @id @default(cuid())
+  meetingId     String
+  assigneeName  String?
+  assigneeUserId String?
+  task          String
+  dueDate       DateTime?
+  priority      ActionItemPriority @default(MEDIUM)
+  status        ActionItemStatus   @default(OPEN)
+  sourceText    String?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  meeting  Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  assignee User?   @relation(fields: [assigneeUserId], references: [id])
+
+  @@index([meetingId])
+  @@index([status])
+}
+
+model ChatMessage {
+  id          String   @id @default(cuid())
+  userId      String
+  workspaceId String
+  meetingId   String?
+  role        String // "user" | "assistant"
+  content     String
+  createdAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  meeting   Meeting?  @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+  @@index([userId])
+}
+
+model Integration {
+  id          String            @id @default(cuid())
+  workspaceId String
+  provider    String
+  status      IntegrationStatus @default(DISCONNECTED)
+  metadata    Json?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, provider])
+}
+
+model CustomVocabulary {
+  id          String   @id @default(cuid())
+  workspaceId String
+  term        String
+  description String?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId])
+}
+
+model BillingSubscription {
+  id                   String             @id @default(cuid())
+  workspaceId          String             @unique
+  plan                 Plan               @default(BASIC)
+  status               SubscriptionStatus @default(ACTIVE)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?
+  currentPeriodStart   DateTime           @default(now())
+  currentPeriodEnd     DateTime?
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+}
+
+model UsageRecord {
+  id                  String   @id @default(cuid())
+  workspaceId         String
+  userId              String?
+  meetingId           String?
+  transcriptionMinutes Float   @default(0)
+  createdAt           DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  meeting   Meeting?  @relation(fields: [meetingId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String?
+  action      String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([workspaceId])
+}

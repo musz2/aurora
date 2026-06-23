@@ -1,0 +1,8 @@
+/* Fonts are loaded via <link> in index.html (Google Fonts).
+   Display: Instrument Serif — headings & logo.
+   Body: Inter — navigation & descriptions. */
+
+:root {
+  --font-display: "Instrument Serif", Georgia, serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
