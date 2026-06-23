@@ -1,4 +1,6 @@
 export * from "./plans.js";
+export * from "./features.js";
+export * from "./integrations.js";
 
 export const MEETING_STATUSES = [
   "SCHEDULED",

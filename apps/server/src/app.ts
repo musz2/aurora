@@ -16,6 +16,8 @@ import workspaceRoutes from "./routes/workspace.routes.js";
 import integrationsRoutes from "./routes/integrations.routes.js";
 import billingRoutes from "./routes/billing.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
+import configRoutes from "./routes/config.routes.js";
+import sessionsRoutes from "./routes/sessions.routes.js";
 
 export function createApp() {
   const app = express();
@@ -54,6 +56,10 @@ export function createApp() {
       },
     });
   });
+
+  // Public (no auth): capability config + shared session viewer.
+  app.use("/api/config", configRoutes);
+  app.use("/api/sessions", sessionsRoutes);
 
   app.use("/api/auth", authLimiter, authRoutes);
   app.use("/api/meetings", meetingsRoutes);

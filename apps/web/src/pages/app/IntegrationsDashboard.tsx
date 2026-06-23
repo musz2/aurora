@@ -1,116 +1,106 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Plug } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Check, Clock, Settings2 } from "lucide-react";
 import { api } from "@/lib/api";
-import { Card, Badge } from "@/components/ui/primitives";
+import { Card } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
+import { StatusPill } from "@/components/ui/StatusPill";
 import { PageTitle, LoadingBlock } from "@/components/app/shared";
-import { INTEGRATIONS } from "@/lib/marketing";
+import { useToast } from "@/components/ui/Toast";
+import type { IntegrationCatalogEntry } from "@aurora/shared";
 
-interface IntegrationStatus {
-  provider: string;
-  status: "CONNECTED" | "DISCONNECTED";
-}
-
-const META = new Map(
-  INTEGRATIONS.map((i) => [
-    i.name
-      .toLowerCase()
-      .replace("microsoft ", "")
-      .replace("google ", "google-")
-      .replace(" ", "-"),
-    i,
-  ])
-);
-
-function describe(provider: string) {
-  const found = INTEGRATIONS.find(
-    (i) =>
-      i.name.toLowerCase().includes(provider.replace("-", " ")) ||
-      provider.includes(i.name.toLowerCase().split(" ")[0])
+function StateBadge({ state }: { state: IntegrationCatalogEntry["state"] }) {
+  if (state === "CONNECTED")
+    return (
+      <StatusPill tone="success">
+        <Check className="h-3 w-3" /> Connected
+      </StatusPill>
+    );
+  if (state === "COMING_SOON")
+    return (
+      <StatusPill tone="muted">
+        <Clock className="h-3 w-3" /> Coming soon
+      </StatusPill>
+    );
+  return (
+    <StatusPill tone="processing">
+      <Settings2 className="h-3 w-3" /> Not configured
+    </StatusPill>
   );
-  return found;
 }
 
 export function IntegrationsDashboard() {
-  const qc = useQueryClient();
+  const { toast } = useToast();
   const { data, isLoading } = useQuery({
     queryKey: ["integrations"],
     queryFn: async () =>
-      (await api.get<{ integrations: IntegrationStatus[] }>("/integrations"))
+      (await api.get<{ integrations: IntegrationCatalogEntry[] }>("/integrations"))
         .data.integrations,
-  });
-
-  const toggle = useMutation({
-    mutationFn: async ({
-      provider,
-      connect,
-    }: {
-      provider: string;
-      connect: boolean;
-    }) =>
-      api.post(`/integrations/${provider}/${connect ? "connect" : "disconnect"}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["integrations"] }),
   });
 
   return (
     <div>
       <PageTitle
         title="Integrations"
-        subtitle="Connect Aurora to your meeting, CRM, task, and storage tools."
+        subtitle="Connect Aurora to your meeting, calendar, CRM, and docs tools."
       />
+
+      <div className="mb-5 rounded-xl border border-black/[0.06] bg-aurora-50/40 px-4 py-3 text-sm text-aurora-800">
+        Integrations use official provider APIs and OAuth. Statuses are honest —
+        Aurora never shows a fake “Connected”. Items marked{" "}
+        <span className="font-medium">Not configured</span> require server
+        credentials; <span className="font-medium">Coming soon</span> items are
+        planned.
+      </div>
 
       {isLoading ? (
         <LoadingBlock rows={6} />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {data?.map((it) => {
-            const meta = describe(it.provider) ?? META.get(it.provider);
-            const connected = it.status === "CONNECTED";
-            return (
-              <Card key={it.provider} className="flex flex-col p-5">
-                <div className="flex items-center gap-3">
-                  <span
-                    className="grid h-11 w-11 place-items-center rounded-xl text-sm font-bold text-white"
-                    style={{ backgroundColor: meta?.color ?? "#6366f1" }}
-                  >
-                    {(meta?.name ?? it.provider)[0].toUpperCase()}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="font-medium capitalize text-ink">
-                      {meta?.name ?? it.provider.replace("-", " ")}
-                    </p>
-                    <p className="text-xs text-muted">
-                      {meta?.category ?? "Integration"}
-                    </p>
-                  </div>
-                  {connected && (
-                    <Badge tone="green" className="ml-auto">
-                      <Check className="h-3 w-3" /> Connected
-                    </Badge>
-                  )}
-                </div>
-                <p className="mt-3 flex-1 text-sm text-muted">
-                  {connected
-                    ? "Active — meetings and data sync automatically."
-                    : `Connect ${meta?.name ?? it.provider} to sync meetings, notes, and tasks.`}
-                </p>
-                <Button
-                  variant={connected ? "outline" : "secondary"}
-                  size="sm"
-                  className="mt-4"
-                  onClick={() =>
-                    toggle.mutate({
-                      provider: it.provider,
-                      connect: !connected,
-                    })
-                  }
-                  disabled={toggle.isPending}
+          {data?.map((it) => (
+            <Card key={it.provider} className="flex flex-col p-5">
+              <div className="flex items-center gap-3">
+                <span
+                  className="grid h-11 w-11 place-items-center rounded-xl text-sm font-bold text-white"
+                  style={{ backgroundColor: it.color }}
                 >
-                  {connected ? "Disconnect" : "Connect"}
-                </Button>
-              </Card>
-            );
-          })}
+                  {it.name[0]}
+                </span>
+                <div className="min-w-0">
+                  <p className="font-medium text-ink">{it.name}</p>
+                  <p className="text-xs text-muted">{it.category}</p>
+                </div>
+                <div className="ml-auto">
+                  <StateBadge state={it.state} />
+                </div>
+              </div>
+              <p className="mt-3 flex-1 text-sm text-muted">{it.description}</p>
+              {it.state === "NOT_CONFIGURED" && it.setupNote && (
+                <p className="mt-2 rounded-lg bg-black/[0.03] px-2.5 py-1.5 text-xs text-muted">
+                  {it.setupNote}
+                </p>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="mt-4"
+                disabled={it.state === "COMING_SOON"}
+                onClick={() =>
+                  toast(
+                    it.state === "COMING_SOON"
+                      ? `${it.name} is coming soon.`
+                      : `${it.name} requires setup. ${it.setupNote ?? ""}`,
+                    "info"
+                  )
+                }
+              >
+                {it.state === "COMING_SOON"
+                  ? "Coming soon"
+                  : it.state === "CONNECTED"
+                    ? "Manage"
+                    : "Configure"}
+              </Button>
+            </Card>
+          ))}
         </div>
       )}
     </div>

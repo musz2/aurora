@@ -8,6 +8,9 @@ import { DashboardLayout } from "@/layouts/DashboardLayout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 
 import { LandingPage } from "@/pages/public/LandingPage";
+import { ProductPage } from "@/pages/public/ProductPage";
+import { JoinPage } from "@/pages/public/JoinPage";
+import { ViewerPage } from "@/pages/viewer/ViewerPage";
 import { FeaturesPage } from "@/pages/public/FeaturesPage";
 import { UseCasesPage } from "@/pages/public/UseCasesPage";
 import { IntegrationsPage } from "@/pages/public/IntegrationsPage";
@@ -47,6 +50,7 @@ export function App() {
     <Routes>
       <Route element={<PublicLayout />}>
         <Route path="/" element={<LandingPage />} />
+        <Route path="/product" element={<ProductPage />} />
         <Route path="/features" element={<FeaturesPage />} />
         <Route path="/solutions" element={<UseCasesPage />} />
         <Route path="/integrations" element={<IntegrationsPage />} />
@@ -57,6 +61,8 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/signup" element={<SignupPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/join" element={<JoinPage />} />
+      <Route path="/s/:shareId" element={<ViewerPage />} />
 
       <Route
         path="/app"

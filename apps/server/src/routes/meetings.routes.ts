@@ -4,7 +4,8 @@ import {
   transcriptSegmentSchema,
 } from "@aurora/shared";
 import { prisma } from "../lib/prisma.js";
-import { asyncHandler, notFound } from "../utils/http.js";
+import { nanoid } from "nanoid";
+import { asyncHandler, notFound, badRequest } from "../utils/http.js";
 import { requireAuth } from "../middleware/auth.js";
 import {
   serializeMeeting,
@@ -254,6 +255,46 @@ router.post(
       data: { meetingId: req.params.id, ...data },
     });
     res.status(201).json({ segment: serializeSegment(segment) });
+  })
+);
+
+/* ----------------------------- Sharing ----------------------------- */
+
+router.post(
+  "/:id/share",
+  asyncHandler(async (req, res) => {
+    const enable = req.body?.shared !== false;
+    const existing = await prisma.meeting.findFirst({
+      where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
+      select: { id: true, shareId: true },
+    });
+    if (!existing) throw notFound("Meeting not found");
+    const shareId =
+      existing.shareId ?? `s_${nanoid(12)}`;
+    await prisma.meeting.update({
+      where: { id: existing.id },
+      data: { shared: enable, shareId: enable ? shareId : existing.shareId },
+    });
+    res.json({ shared: enable, shareId: enable ? shareId : null });
+  })
+);
+
+router.post(
+  "/:id/notes",
+  asyncHandler(async (req, res) => {
+    const note = (req.body?.note as string)?.trim();
+    if (!note) throw badRequest("note is required");
+    const meeting = await prisma.meeting.findFirst({
+      where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
+      select: { id: true, publishedNotes: true },
+    });
+    if (!meeting) throw notFound("Meeting not found");
+    const publishedNotes = [...meeting.publishedNotes, note];
+    await prisma.meeting.update({
+      where: { id: meeting.id },
+      data: { publishedNotes },
+    });
+    res.json({ publishedNotes });
   })
 );
 

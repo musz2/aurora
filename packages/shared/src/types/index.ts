@@ -72,6 +72,9 @@ export interface MeetingDto {
   recordingUrl: string | null;
   tags: string[];
   participants: string[];
+  shared?: boolean;
+  shareId?: string | null;
+  publishedNotes?: string[];
   createdById: string;
   createdAt: string;
   updatedAt: string;

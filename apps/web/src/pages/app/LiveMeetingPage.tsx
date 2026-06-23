@@ -1,64 +1,74 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import {
   Radio,
   Square,
-  Mic,
-  MicOff,
-  Sparkles,
-  Send,
   ShieldCheck,
-  Wifi,
   Loader2,
-  ArrowUpToLine,
+  Copy,
+  Link2,
+  Users,
+  Wifi,
+  WifiOff,
+  AlertTriangle,
 } from "lucide-react";
-import { SOCKET_EVENTS } from "@aurora/shared";
-import { api } from "@/lib/api";
-import { AuroraSocket } from "@/lib/ws";
-import { Card, Avatar, Badge } from "@/components/ui/primitives";
+import { SOCKET_EVENTS, type UsageSummary } from "@aurora/shared";
+import { api, apiError } from "@/lib/api";
+import { AuroraSocket, type ConnState } from "@/lib/ws";
+import { useMicrophone } from "@/hooks/useMicrophone";
+import { useConfig } from "@/lib/useConfig";
+import { useToast } from "@/components/ui/Toast";
+import { Card } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
+import { StatusPill } from "@/components/ui/StatusPill";
+import { MicSelector, MicLevelMeter } from "@/components/app/MicControls";
+import { TranscriptPanel, type FinalSegment } from "@/components/app/TranscriptPanel";
+import { AssistantPanel, type Suggestion } from "@/components/app/AssistantPanel";
+import { UsageMeter } from "@/components/app/shared";
 import { formatClock } from "@/lib/format";
-import { cn } from "@/lib/cn";
 
-interface Segment {
-  id: string;
-  speakerName: string;
-  text: string;
-  startTime: number;
-}
+type EngineState = "live" | "listening" | "processing" | "finalized" | "idle";
 
-interface Suggestion {
-  question: string;
-  suggestion: string;
-}
+const ENGINE_LABEL: Record<EngineState, string> = {
+  live: "Live",
+  listening: "Listening…",
+  processing: "Processing…",
+  finalized: "Finalized",
+  idle: "Idle",
+};
 
 export function LiveMeetingPage() {
   const navigate = useNavigate();
+  const config = useConfig();
+  const mic = useMicrophone();
+  const { toast } = useToast();
+
   const [showConsent, setShowConsent] = useState(false);
   const [consented, setConsented] = useState(false);
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
-  const [segments, setSegments] = useState<Segment[]>([]);
-  const [partial, setPartial] = useState<{ speaker: string; text: string } | null>(
-    null
-  );
+  const [segments, setSegments] = useState<FinalSegment[]>([]);
+  const [interim, setInterim] = useState<{ speakerName: string; text: string } | null>(null);
   const [elapsed, setElapsed] = useState(0);
-  const [micOn, setMicOn] = useState(false);
-  const [connected, setConnected] = useState(false);
+  const [conn, setConn] = useState<ConnState>("closed");
+  const [engineState, setEngineState] = useState<EngineState>("idle");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [ask, setAsk] = useState("");
-  const [title, setTitle] = useState("Live Meeting");
+  const [title, setTitle] = useState("Live Session");
+  const [shareLink, setShareLink] = useState<string | null>(null);
 
   const socketRef = useRef<AuroraSocket | null>(null);
   const meetingIdRef = useRef<string>("");
-  const streamRef = useRef<MediaStream | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
   const timerRef = useRef<number>();
-  const transcriptEndRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [segments, partial]);
+  const { data: usage } = useQuery({
+    queryKey: ["usage"],
+    queryFn: async () =>
+      (await api.get<{ usage: UsageSummary }>("/dashboard/usage")).data.usage,
+  });
+
+  const overLimit =
+    usage && usage.limitMinutes !== -1 && usage.usedMinutes >= usage.limitMinutes;
 
   useEffect(() => {
     return () => cleanup();
@@ -67,67 +77,75 @@ export function LiveMeetingPage() {
 
   const cleanup = () => {
     if (timerRef.current) clearInterval(timerRef.current);
-    recorderRef.current?.stop();
-    streamRef.current?.getTracks().forEach((t) => t.stop());
+    mic.stop();
     socketRef.current?.close();
+  };
+
+  const requestStart = () => {
+    if (overLimit) {
+      toast("Monthly transcription limit reached. Upgrade to keep recording.", "error");
+      navigate("/app/billing");
+      return;
+    }
+    setShowConsent(true);
   };
 
   const beginRecording = async () => {
     setShowConsent(false);
-    setProcessing(false);
     setSegments([]);
     setSuggestions([]);
+    setInterim(null);
     setElapsed(0);
 
-    // 1. Create the meeting record.
+    // 1. Capture the selected physical microphone (drives the indicator).
+    const stream = await mic.start();
+    if (!stream) {
+      toast(mic.error ?? "Microphone access is required to record.", "error");
+      return;
+    }
+
+    // 2. Create the session record + a public share link.
     try {
-      const { data } = await api.post("/meetings", {
-        title,
-        source: "LIVE",
-      });
+      const { data } = await api.post("/meetings", { title, source: "LIVE" });
       meetingIdRef.current = data.meeting.id;
+      const share = await api.post(`/meetings/${data.meeting.id}/share`, {
+        shared: true,
+      });
+      if (share.data.shareId) {
+        setShareLink(`${window.location.origin}/s/${share.data.shareId}`);
+      }
     } catch {
       meetingIdRef.current = "";
     }
 
-    // 2. Request the microphone (drives the visible mic indicator).
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      const recorder = new MediaRecorder(stream);
-      recorderRef.current = recorder;
-      recorder.start(1000);
-      setMicOn(true);
-    } catch {
-      setMicOn(false);
-    }
-
-    // 3. Connect the socket and start streaming transcript.
-    const socket = new AuroraSocket().connect();
+    // 3. Connect socket + stream transcript.
+    const socket = new AuroraSocket().onState(setConn).connect();
     socketRef.current = socket;
-    setConnected(true);
 
     socket.on(SOCKET_EVENTS.TRANSCRIPT_PARTIAL, (p) =>
-      setPartial({ speaker: p.speakerName, text: p.text })
+      setInterim({ speakerName: p.speakerName, text: p.text })
     );
     socket.on(SOCKET_EVENTS.TRANSCRIPT_SEGMENT, (s) => {
-      setPartial(null);
-      setSegments((prev) => [...prev, s]);
+      setInterim(null);
+      setSegments((prev) =>
+        prev.some((x) => x.id === s.id) ? prev : [...prev, s]
+      );
     });
-    socket.on(SOCKET_EVENTS.AI_SUGGESTION, (s: Suggestion) =>
-      setSuggestions((prev) => [s, ...prev])
+    socket.on(SOCKET_EVENTS.MEETING_STATUS, (s) => {
+      if (s.state) setEngineState(s.state as EngineState);
+    });
+    socket.on(SOCKET_EVENTS.AI_SUGGESTION, (s) =>
+      setSuggestions((prev) => [
+        { id: crypto.randomUUID(), question: s.question, suggestion: s.suggestion, configured: s.configured !== false },
+        ...prev,
+      ])
     );
-    socket.on(SOCKET_EVENTS.MEETING_STATUS, () => {});
 
-    socket.send(SOCKET_EVENTS.MEETING_START, {
-      meetingId: meetingIdRef.current,
-    });
+    socket.send(SOCKET_EVENTS.MEETING_START, { meetingId: meetingIdRef.current });
 
     setRecording(true);
-    timerRef.current = window.setInterval(
-      () => setElapsed((e) => e + 1),
-      1000
-    );
+    setEngineState("live");
+    timerRef.current = window.setInterval(() => setElapsed((e) => e + 1), 1000);
   };
 
   const stopRecording = async () => {
@@ -135,13 +153,11 @@ export function LiveMeetingPage() {
     socketRef.current?.send(SOCKET_EVENTS.MEETING_STOP, {
       meetingId: meetingIdRef.current,
     });
-    recorderRef.current?.stop();
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-    setMicOn(false);
+    mic.stop();
     setRecording(false);
+    setEngineState("finalized");
     setProcessing(true);
 
-    // Finalize: stop + summarize on the server.
     const id = meetingIdRef.current;
     if (id) {
       try {
@@ -150,25 +166,21 @@ export function LiveMeetingPage() {
         socketRef.current?.close();
         navigate(`/app/meetings/${id}`);
         return;
-      } catch {
-        /* fall through */
+      } catch (err) {
+        toast(apiError(err, "Could not finalize session"), "error");
       }
     }
     setProcessing(false);
     socketRef.current?.close();
   };
 
-  const askAurora = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!ask.trim()) return;
-    socketRef.current?.send(SOCKET_EVENTS.AI_ASK_LIVE, { question: ask.trim() });
-    setAsk("");
-  };
+  const askLive = (q: string) =>
+    socketRef.current?.send(SOCKET_EVENTS.AI_ASK_LIVE, { question: q });
 
   const publishToTranscript = (text: string) => {
-    const seg: Segment = {
+    const seg: FinalSegment = {
       id: crypto.randomUUID(),
-      speakerName: "You (Aurora-assisted)",
+      speakerName: "Host (published)",
       text,
       startTime: elapsed,
     };
@@ -183,11 +195,44 @@ export function LiveMeetingPage() {
         })
         .catch(() => {});
     }
+    toast("Published to the shared transcript", "success");
+  };
+
+  const addNote = (text: string) => {
+    if (!meetingIdRef.current) return;
+    api
+      .post(`/meetings/${meetingIdRef.current}/notes`, { note: text })
+      .then(() => toast("Added to shared notes", "success"))
+      .catch(() => toast("Could not add note", "error"));
+  };
+
+  const copyLink = () => {
+    if (!shareLink) return;
+    navigator.clipboard.writeText(shareLink);
+    toast("Share link copied", "success");
+  };
+
+  const connPill = () => {
+    if (conn === "open")
+      return <StatusPill tone="success" pulse>Connected · low latency</StatusPill>;
+    if (conn === "reconnecting")
+      return (
+        <StatusPill tone="processing" pulse>
+          <WifiOff className="h-3 w-3" /> Reconnecting…
+        </StatusPill>
+      );
+    if (conn === "connecting")
+      return <StatusPill tone="processing" pulse>Connecting…</StatusPill>;
+    return (
+      <StatusPill tone="idle">
+        <Wifi className="h-3 w-3" /> Idle
+      </StatusPill>
+    );
   };
 
   return (
     <div>
-      {/* Top bar */}
+      {/* Header */}
       <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
         <div>
           {recording ? (
@@ -197,193 +242,167 @@ export function LiveMeetingPage() {
               className="bg-transparent font-display text-3xl text-ink outline-none"
             />
           ) : (
-            <h1 className="font-display text-3xl text-ink">Live Meeting Room</h1>
+            <h1 className="font-display text-3xl text-ink">Host Console</h1>
           )}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {recording && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-3 py-1 text-sm font-medium text-red-700">
-                <span className="h-2 w-2 animate-pulse-dot rounded-full bg-red-500" />
-                Recording • {formatClock(elapsed)}
-              </span>
+              <StatusPill tone="live" pulse>
+                REC {formatClock(elapsed)}
+              </StatusPill>
             )}
-            <Badge tone={connected ? "green" : "slate"}>
-              <Wifi className="h-3 w-3" />
-              {connected ? "Connected" : "Idle"}
-            </Badge>
-            <Badge tone={micOn ? "green" : "slate"}>
-              {micOn ? <Mic className="h-3 w-3" /> : <MicOff className="h-3 w-3" />}
-              {micOn ? "Mic on" : "Mic off"}
-            </Badge>
+            {recording && (
+              <StatusPill tone={engineState === "processing" ? "processing" : "success"}>
+                {ENGINE_LABEL[engineState]}
+              </StatusPill>
+            )}
+            {recording && connPill()}
+            <StatusPill tone="muted">
+              {config.transcriptionEngine === "deepgram"
+                ? "Deepgram STT"
+                : "Simulated engine"}
+            </StatusPill>
           </div>
         </div>
 
         <div>
           {!recording ? (
-            <Button
-              variant="secondary"
-              size="lg"
-              onClick={() => setShowConsent(true)}
-              disabled={processing}
-            >
-              <Radio className="h-5 w-5" /> Start recording
+            <Button variant="secondary" size="lg" onClick={requestStart} disabled={processing}>
+              <Radio className="h-5 w-5" /> Start session
             </Button>
           ) : (
             <Button variant="danger" size="lg" onClick={stopRecording}>
-              <Square className="h-4 w-4" /> Stop & summarize
+              <Square className="h-4 w-4" /> End & summarize
             </Button>
           )}
         </div>
       </div>
 
+      {config.transcriptionEngine === "simulated" && (
+        <div className="mb-5 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            <span className="font-medium">Simulated transcription.</span> Your
+            real microphone is captured and metered, but speech-to-text uses a
+            built-in demo engine. Set <code className="rounded bg-amber-100 px-1">DEEPGRAM_API_KEY</code>{" "}
+            on the server for live STT.
+          </p>
+        </div>
+      )}
+
       {processing && (
         <Card className="mb-6 flex items-center gap-3 p-4">
           <Loader2 className="h-5 w-5 animate-spin text-aurora-600" />
           <span className="text-sm text-ink">
-            Processing recording — generating summary and action items…
+            Processing session — generating summary and action items…
           </span>
         </Card>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Live transcript */}
-        <div className="lg:col-span-2">
+      <div className="grid gap-6 lg:grid-cols-12">
+        {/* LEFT — controls */}
+        <div className="space-y-4 lg:col-span-3">
+          <Card className="space-y-4 p-4">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="h-4 w-4 text-emerald-600" />
+              <span className="text-sm font-medium text-ink">Consent</span>
+            </div>
+            <p className="text-xs leading-relaxed text-muted">
+              Consent-first. The recording indicator stays visible and is never
+              hidden. Ensure all participants are informed.
+            </p>
+            <MicSelector mic={mic} />
+            <MicLevelMeter mic={mic} />
+            {mic.error && (
+              <p className="rounded-lg bg-red-50 px-3 py-2 text-xs text-red-700">
+                {mic.error}
+              </p>
+            )}
+          </Card>
+
+          {usage && (
+            <Card className="p-4">
+              <UsageMeter used={usage.usedMinutes} limit={usage.limitMinutes} />
+              {overLimit && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="mt-3 w-full"
+                  onClick={() => navigate("/app/billing")}
+                >
+                  Upgrade to continue
+                </Button>
+              )}
+            </Card>
+          )}
+
+          {shareLink && (
+            <Card className="p-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-ink">
+                <Link2 className="h-4 w-4 text-aurora-600" /> Share session
+              </div>
+              <p className="mt-1 text-xs text-muted">
+                Viewers see the shared transcript and published notes only.
+              </p>
+              <div className="mt-2 flex items-center gap-2">
+                <input
+                  readOnly
+                  value={shareLink}
+                  className="flex-1 truncate rounded-lg border border-black/10 bg-black/[0.02] px-2 py-1.5 text-xs text-muted"
+                />
+                <button
+                  onClick={copyLink}
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-ink text-white"
+                >
+                  <Copy className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div className="mt-2 flex items-center gap-1.5 text-xs text-muted">
+                <Users className="h-3.5 w-3.5" /> Live viewers join via the link
+              </div>
+            </Card>
+          )}
+        </div>
+
+        {/* CENTER — transcript */}
+        <div className="lg:col-span-6">
           <Card className="flex h-[640px] flex-col overflow-hidden">
             <div className="flex items-center justify-between border-b border-black/[0.06] px-5 py-4">
               <span className="font-medium text-ink">Live transcript</span>
               {recording && (
-                <span className="text-xs text-muted">
-                  Streaming{micOn ? " · simulated engine" : ""}
-                </span>
+                <StatusPill tone={engineState === "processing" ? "processing" : "success"} pulse>
+                  {ENGINE_LABEL[engineState]}
+                </StatusPill>
               )}
             </div>
-            <div className="flex-1 space-y-4 overflow-y-auto px-5 py-5">
-              {!recording && segments.length === 0 ? (
+            <TranscriptPanel
+              segments={segments}
+              interim={interim}
+              emptyState={
                 <div className="flex h-full flex-col items-center justify-center text-center">
                   <Radio className="h-9 w-9 text-aurora-400" />
-                  <p className="mt-3 font-medium text-ink">
-                    Ready when you are
-                  </p>
+                  <p className="mt-3 font-medium text-ink">Ready when you are</p>
                   <p className="mt-1 max-w-xs text-sm text-muted">
-                    Start recording to see live, speaker-labeled transcription
-                    stream in real time.
+                    Start the session to stream live, speaker-labeled
+                    transcription. Interim words appear instantly and finalize
+                    into clean paragraphs after a brief pause.
                   </p>
                 </div>
-              ) : (
-                <>
-                  {segments.map((s) => (
-                    <div key={s.id} className="flex gap-3 transcript-line">
-                      <Avatar
-                        name={s.speakerName}
-                        className="h-8 w-8 text-[10px]"
-                      />
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-semibold text-ink">
-                            {s.speakerName}
-                          </span>
-                          <span className="text-xs text-muted">
-                            {formatClock(s.startTime)}
-                          </span>
-                        </div>
-                        <p className="mt-0.5 text-sm leading-relaxed text-ink/80">
-                          {s.text}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                  {partial && (
-                    <div className="flex gap-3 opacity-60">
-                      <Avatar
-                        name={partial.speaker}
-                        className="h-8 w-8 text-[10px]"
-                      />
-                      <div>
-                        <span className="text-sm font-semibold text-ink">
-                          {partial.speaker}
-                        </span>
-                        <p className="mt-0.5 text-sm italic text-muted">
-                          {partial.text}…
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                  <div ref={transcriptEndRef} />
-                </>
-              )}
-            </div>
+              }
+            />
           </Card>
         </div>
 
-        {/* Right: AI assistant + privacy */}
-        <div className="space-y-4">
-          <Card className="p-4">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-emerald-600" />
-              <span className="text-sm font-medium text-ink">
-                Consent & recording status
-              </span>
-            </div>
-            <p className="mt-2 text-xs leading-relaxed text-muted">
-              Aurora is consent-first. The recording indicator is always visible
-              and never hidden. Ensure all participants have been informed.
-            </p>
-          </Card>
-
-          <Card className="flex h-[460px] flex-col overflow-hidden">
-            <div className="flex items-center gap-2 border-b border-black/[0.06] px-4 py-3">
-              <Sparkles className="h-4 w-4 text-violetAccent" />
-              <span className="text-sm font-medium text-ink">
-                Private AI assistant
-              </span>
-            </div>
-            <div className="flex-1 space-y-3 overflow-y-auto p-4">
-              {suggestions.length === 0 ? (
-                <p className="text-sm text-muted">
-                  Ask Aurora privately for a suggested answer. Only you can see
-                  this — publish to the transcript when you're ready.
-                </p>
-              ) : (
-                suggestions.map((s, i) => (
-                  <div
-                    key={i}
-                    className="rounded-xl border border-black/[0.06] bg-aurora-50/50 p-3"
-                  >
-                    <p className="text-xs font-medium text-aurora-700">
-                      “{s.question}”
-                    </p>
-                    <p className="mt-1.5 text-sm text-ink/80">{s.suggestion}</p>
-                    <button
-                      onClick={() => publishToTranscript(s.suggestion)}
-                      className="mt-2 inline-flex items-center gap-1 text-xs font-medium text-aurora-600 hover:underline"
-                    >
-                      <ArrowUpToLine className="h-3 w-3" /> Publish to transcript
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-            <form
-              onSubmit={askAurora}
-              className={cn(
-                "flex items-center gap-2 border-t border-black/[0.06] p-3",
-                !recording && "opacity-50"
-              )}
-            >
-              <input
-                value={ask}
-                onChange={(e) => setAsk(e.target.value)}
-                disabled={!recording}
-                placeholder="Ask Aurora privately…"
-                className="flex-1 rounded-xl border border-black/10 px-3 py-2 text-sm outline-none focus:border-aurora-400"
-              />
-              <button
-                type="submit"
-                disabled={!recording}
-                className="grid h-9 w-9 place-items-center rounded-xl bg-violetAccent text-white disabled:opacity-50"
-              >
-                <Send className="h-4 w-4" />
-              </button>
-            </form>
+        {/* RIGHT — assistant */}
+        <div className="lg:col-span-3">
+          <Card className="h-[640px] overflow-hidden">
+            <AssistantPanel
+              aiConfigured={config.services.ai}
+              recording={recording}
+              suggestions={suggestions}
+              onAsk={askLive}
+              onPublish={publishToTranscript}
+              onAddNote={addNote}
+            />
           </Card>
         </div>
       </div>
@@ -394,12 +413,10 @@ export function LiveMeetingPage() {
           <Card className="w-full max-w-md p-6">
             <div className="flex items-center gap-2">
               <span className="h-2.5 w-2.5 animate-pulse-dot rounded-full bg-red-500" />
-              <h2 className="font-display text-2xl text-ink">
-                Recording consent
-              </h2>
+              <h2 className="font-display text-2xl text-ink">Recording consent</h2>
             </div>
             <p className="mt-3 text-sm leading-relaxed text-muted">
-              This meeting may be recorded and transcribed. Make sure all
+              This session may be recorded and transcribed. Make sure all
               required participants have been informed and consent has been
               obtained according to applicable laws and company policy.
             </p>
@@ -411,7 +428,7 @@ export function LiveMeetingPage() {
                 className="mt-0.5 h-4 w-4 accent-aurora-600"
               />
               <span className="text-sm text-ink">
-                I confirm I have permission to record/transcribe this meeting.
+                I confirm I have permission to record/transcribe this session.
               </span>
             </label>
             <div className="mt-5 flex justify-end gap-2">
@@ -424,12 +441,8 @@ export function LiveMeetingPage() {
               >
                 Cancel
               </Button>
-              <Button
-                variant="secondary"
-                disabled={!consented}
-                onClick={beginRecording}
-              >
-                Start recording
+              <Button variant="secondary" disabled={!consented} onClick={beginRecording}>
+                Start session
               </Button>
             </div>
           </Card>

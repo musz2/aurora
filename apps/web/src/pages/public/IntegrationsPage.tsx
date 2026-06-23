@@ -1,8 +1,30 @@
+import { Check, Clock, Settings2 } from "lucide-react";
 import { PageHeader } from "@/components/marketing/PageHeader";
-import { INTEGRATIONS } from "@/lib/marketing";
 import { Button } from "@/components/ui/Button";
+import { StatusPill } from "@/components/ui/StatusPill";
+import { INTEGRATION_CATALOG, type IntegrationState } from "@aurora/shared";
 
-const categories = [...new Set(INTEGRATIONS.map((i) => i.category))];
+const categories = [...new Set(INTEGRATION_CATALOG.map((i) => i.category))];
+
+function StateBadge({ state }: { state: IntegrationState }) {
+  if (state === "CONNECTED")
+    return (
+      <StatusPill tone="success">
+        <Check className="h-3 w-3" /> Connected
+      </StatusPill>
+    );
+  if (state === "COMING_SOON")
+    return (
+      <StatusPill tone="muted">
+        <Clock className="h-3 w-3" /> Coming soon
+      </StatusPill>
+    );
+  return (
+    <StatusPill tone="processing">
+      <Settings2 className="h-3 w-3" /> Not configured
+    </StatusPill>
+  );
+}
 
 export function IntegrationsPage() {
   return (
@@ -15,7 +37,7 @@ export function IntegrationsPage() {
             <span style={{ color: "#6F6F6F" }}>entire stack</span>
           </>
         }
-        subtitle="Bring meetings in from your calendar and conferencing tools, and push summaries and action items out to where work happens."
+        subtitle="Bring meetings in from your calendar and conferencing tools, and push summaries and action items out to where work happens. Every integration uses official APIs."
       />
 
       <div className="mx-auto max-w-7xl px-6 sm:px-8">
@@ -25,10 +47,10 @@ export function IntegrationsPage() {
               {cat}
             </h2>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {INTEGRATIONS.filter((i) => i.category === cat).map((it) => (
+              {INTEGRATION_CATALOG.filter((i) => i.category === cat).map((it) => (
                 <div
-                  key={it.name}
-                  className="flex items-center justify-between rounded-2xl border border-black/[0.06] bg-white p-5"
+                  key={it.provider}
+                  className="rounded-2xl border border-black/[0.06] bg-white p-5"
                 >
                   <div className="flex items-center gap-3">
                     <span
@@ -37,14 +59,15 @@ export function IntegrationsPage() {
                     >
                       {it.name[0]}
                     </span>
-                    <div>
+                    <div className="min-w-0">
                       <p className="font-medium text-ink">{it.name}</p>
                       <p className="text-xs text-muted">{it.category}</p>
                     </div>
+                    <div className="ml-auto">
+                      <StateBadge state={it.state} />
+                    </div>
                   </div>
-                  <Button variant="outline" size="sm">
-                    Connect
-                  </Button>
+                  <p className="mt-3 text-sm text-muted">{it.description}</p>
                 </div>
               ))}
             </div>
@@ -53,11 +76,11 @@ export function IntegrationsPage() {
 
         <div className="rounded-3xl bg-gradient-to-b from-aurora-50/60 to-white p-10 text-center">
           <h2 className="font-display text-3xl text-ink">
-            Don't see your tool?
+            Need a specific integration?
           </h2>
           <p className="mx-auto mt-2 max-w-lg text-muted">
-            Aurora connects to thousands of apps through Zapier and a developer
-            API — automate any workflow.
+            Connectors are added continuously. Tell us what your team needs and
+            we'll prioritize it.
           </p>
           <Button to="/signup" variant="secondary" className="mt-6">
             Start Free

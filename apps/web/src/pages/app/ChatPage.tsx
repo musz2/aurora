@@ -5,6 +5,7 @@ import { Send, Sparkles, Loader2, FileText } from "lucide-react";
 import { api, apiError } from "@/lib/api";
 import { Card } from "@/components/ui/primitives";
 import { PageTitle } from "@/components/app/shared";
+import { useConfig } from "@/lib/useConfig";
 
 interface Citation {
   meetingId: string;
@@ -30,6 +31,7 @@ export function ChatPage() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [scope, setScope] = useState<"all" | "current">("all");
+  const config = useConfig();
   const endRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -77,6 +79,15 @@ export function ChatPage() {
         title="Aurora AI Chat"
         subtitle="Ask questions across your entire meeting history — with cited sources."
       />
+
+      {!config.services.ai && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span className="font-medium">Demo mode.</span> No AI provider is
+          configured, so answers are illustrative. Set{" "}
+          <code className="rounded bg-amber-100 px-1">OPENAI_API_KEY</code> on the
+          server for real, source-grounded responses.
+        </div>
+      )}
 
       <Card className="flex h-[calc(100vh-220px)] min-h-[480px] flex-col overflow-hidden">
         <div className="flex items-center justify-between border-b border-black/[0.06] px-5 py-3">

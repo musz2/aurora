@@ -7,11 +7,12 @@ import { useAuthStore } from "@/store/auth";
 import { cn } from "@/lib/cn";
 
 const links = [
-  { label: "Product", to: "/features" },
+  { label: "Product", to: "/product" },
   { label: "Solutions", to: "/solutions" },
   { label: "Integrations", to: "/integrations" },
   { label: "Pricing", to: "/pricing" },
   { label: "Security", to: "/security" },
+  { label: "Join", to: "/join" },
 ];
 
 export function Navbar() {
@@ -57,9 +58,17 @@ export function Navbar() {
 
         <div className="hidden items-center gap-3 md:flex">
           {token && user ? (
-            <Button to="/app" size="md">
-              Open Dashboard
-            </Button>
+            <>
+              <Link
+                to="/app"
+                className="text-sm text-muted transition-colors hover:text-ink"
+              >
+                Dashboard
+              </Link>
+              <Button to="/app/live" size="md">
+                Start Session
+              </Button>
+            </>
           ) : (
             <>
               <Link

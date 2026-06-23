@@ -1,9 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, CreditCard, Download } from "lucide-react";
+import { Check, CreditCard, Download, AlertTriangle } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, Badge, Spinner } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { PageTitle, UsageMeter } from "@/components/app/shared";
+import { useToast } from "@/components/ui/Toast";
 import { useAuthStore } from "@/store/auth";
 import { formatDate } from "@/lib/format";
 import { PLANS, PLAN_ORDER, type PlanId, type UsageSummary } from "@aurora/shared";
@@ -18,6 +19,7 @@ interface BillingData {
 
 export function BillingPage() {
   const qc = useQueryClient();
+  const { toast } = useToast();
   const setUser = useAuthStore((s) => s.setUser);
   const user = useAuthStore((s) => s.user);
 
@@ -33,6 +35,12 @@ export function BillingPage() {
       qc.invalidateQueries({ queryKey: ["billing"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       if (user) setUser({ ...user, plan });
+      toast(
+        data?.stripeEnabled
+          ? "Redirecting to secure checkout…"
+          : "Billing not configured — plan switched in demo mode.",
+        data?.stripeEnabled ? "info" : "info"
+      );
     },
   });
 
@@ -50,6 +58,18 @@ export function BillingPage() {
         title="Billing & Usage"
         subtitle="Manage your plan, monitor usage, and view invoices."
       />
+
+      {!data.stripeEnabled && (
+        <div className="mb-6 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>
+            <span className="font-medium">Billing not configured.</span> Payments
+            are disabled — set <code className="rounded bg-amber-100 px-1">STRIPE_SECRET_KEY</code>{" "}
+            on the server to enable real checkout. Plan switches below run in demo
+            mode and don't charge anything.
+          </p>
+        </div>
+      )}
 
       <div className="mb-6 grid gap-4 lg:grid-cols-3">
         <Card className="p-6 lg:col-span-2">

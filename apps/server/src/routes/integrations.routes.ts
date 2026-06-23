@@ -1,62 +1,48 @@
 import { Router } from "express";
-import { INTEGRATION_PROVIDERS } from "@aurora/shared";
-import { prisma } from "../lib/prisma.js";
+import { INTEGRATION_CATALOG } from "@aurora/shared";
 import { asyncHandler, badRequest } from "../utils/http.js";
 import { requireAuth } from "../middleware/auth.js";
 
 const router = Router();
 router.use(requireAuth);
 
+/**
+ * Honest integrations. No OAuth flows are wired yet, so we report each
+ * provider's real state from the catalog. We never fake a "Connected" status.
+ */
 router.get(
   "/",
-  asyncHandler(async (req, res) => {
-    const existing = await prisma.integration.findMany({
-      where: { workspaceId: req.auth!.workspaceId },
-    });
-    const byProvider = new Map(existing.map((i) => [i.provider, i]));
-    const integrations = INTEGRATION_PROVIDERS.map((provider) => {
-      const found = byProvider.get(provider);
-      return {
-        provider,
-        status: found?.status ?? "DISCONNECTED",
-        metadata: found?.metadata ?? null,
-      };
-    });
-    res.json({ integrations });
+  asyncHandler(async (_req, res) => {
+    res.json({ integrations: INTEGRATION_CATALOG });
   })
 );
 
+/**
+ * Connect is intentionally a no-op that returns the honest setup state instead
+ * of flipping a fake "connected" flag. When real OAuth is added, this becomes
+ * the redirect-to-consent endpoint.
+ */
 router.post(
   "/:provider/connect",
   asyncHandler(async (req, res) => {
-    const provider = req.params.provider;
-    if (!INTEGRATION_PROVIDERS.includes(provider as never)) {
-      throw badRequest("Unknown provider");
-    }
-    const integration = await prisma.integration.upsert({
-      where: {
-        workspaceId_provider: { workspaceId: req.auth!.workspaceId, provider },
-      },
-      create: {
-        workspaceId: req.auth!.workspaceId,
-        provider,
-        status: "CONNECTED",
-        metadata: { connectedAt: new Date().toISOString() },
-      },
-      update: { status: "CONNECTED" },
+    const entry = INTEGRATION_CATALOG.find(
+      (i) => i.provider === req.params.provider
+    );
+    if (!entry) throw badRequest("Unknown provider");
+    res.status(409).json({
+      provider: entry.provider,
+      state: entry.state,
+      message:
+        entry.state === "COMING_SOON"
+          ? `${entry.name} integration is coming soon.`
+          : `${entry.name} is not configured. ${entry.setupNote ?? "Requires OAuth setup."}`,
     });
-    res.json({ integration });
   })
 );
 
 router.post(
   "/:provider/disconnect",
-  asyncHandler(async (req, res) => {
-    const provider = req.params.provider;
-    await prisma.integration.updateMany({
-      where: { workspaceId: req.auth!.workspaceId, provider },
-      data: { status: "DISCONNECTED" },
-    });
+  asyncHandler(async (_req, res) => {
     res.json({ ok: true });
   })
 );
