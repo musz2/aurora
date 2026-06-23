@@ -138,13 +138,25 @@ export function attachSocketServer(server: Server) {
           "Recording active. Ensure all participants have consented per your workspace policy.",
       });
 
+      send(ws, SOCKET_EVENTS.DG_STATUS, {
+        connected: false,
+        connecting: true,
+        events: 0,
+      });
+
       session.dg = createLiveTranscription({
         onOpen: () =>
-          send(ws, SOCKET_EVENTS.DG_STATUS, { connected: true, events: 0 }),
-        onClose: () =>
+          send(ws, SOCKET_EVENTS.DG_STATUS, {
+            connected: true,
+            connecting: false,
+            events: 0,
+          }),
+        onClose: (reason) =>
           send(ws, SOCKET_EVENTS.DG_STATUS, {
             connected: false,
+            connecting: false,
             events: session.dgEvents,
+            reason,
           }),
         onError: (message) =>
           send(ws, SOCKET_EVENTS.TRANSCRIPT_ERROR, {

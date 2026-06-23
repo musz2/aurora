@@ -156,16 +156,50 @@ See [`.env.example`](./.env.example). Summary:
 
 ---
 
-## 🧪 Mock vs. real (API‑ready)
+## 🧪 Real vs. honest "not configured"
 
-| Capability | Without keys (default) | With keys (production) |
+| Capability | Without keys | With keys (production) |
 | --- | --- | --- |
-| Transcription | Realistic simulated engine | Deepgram/Whisper via the same stream interface |
-| Summaries / chat / action items | Deterministic mock output | OpenAI |
-| Payments | Plan switches instantly (demo) | Stripe Checkout/Portal |
+| Live transcription | Real sessions show an honest "STT not configured" error; **Play demo** streams sample data | Real microphone → Deepgram `nova-2` live STT |
+| Summaries / chat / Q&A | "AI not configured" states (no fabricated output) | OpenAI |
+| Payments | "Billing not configured" (demo plan switch) | Stripe Checkout/Portal |
 | Storage | Local `apps/server/uploads` | S3‑compatible bucket |
+| Integrations | "Not configured / Coming soon" cards | Official OAuth APIs |
 
-The service layer is identical in both modes — only the adapter changes.
+The live session **never** falls back to demo transcript during a real recording.
+
+### Live transcription (Deepgram)
+
+`DEEPGRAM_API_KEY` is read from the **root `.env`** into the server. `/api/config`
+reports `liveTranscription: true` only when it's set. Pipeline:
+
+```
+mic → MicLevelMeter → MediaRecorder (audio/webm;codecs=opus, 150ms) →
+binary WS frames → server → Deepgram live (nova-2, interim_results,
+endpointing:200, vad_events) → interim/final events → transcript UI → viewer
+```
+
+Audio chunks are **buffered until Deepgram's `Open` event** and then flushed, so
+the WebM/Opus header (in the first chunk) is never lost — this was the cause of
+the earlier "disconnected / DG events 0" issue. A KeepAlive ping prevents idle
+disconnects. In dev, the host console shows a debug panel (packets sent/received,
+Deepgram state + close reason, DG events, last interim/final).
+
+### Integration env vars (optional)
+
+Cards show **Not configured** until the matching vars are set (see `.env.example`):
+
+| Integration | Env vars |
+| --- | --- |
+| Google Meet / Calendar | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` |
+| Teams / Outlook | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET` |
+| Zoom | `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET` |
+| Slack | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET` |
+| Notion | `NOTION_CLIENT_ID`, `NOTION_CLIENT_SECRET` |
+| HubSpot | `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET` |
+| Salesforce | `SALESFORCE_CLIENT_ID`, `SALESFORCE_CLIENT_SECRET` |
+| Zapier / Webhooks | `ZAPIER_WEBHOOK_URL` |
+| Email export | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` |
 
 ---
 

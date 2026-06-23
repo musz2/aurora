@@ -79,26 +79,42 @@ export function IntegrationsDashboard() {
                   {it.setupNote}
                 </p>
               )}
-              <Button
-                variant="outline"
-                size="sm"
-                className="mt-4"
-                disabled={it.state === "COMING_SOON"}
-                onClick={() =>
-                  toast(
-                    it.state === "COMING_SOON"
-                      ? `${it.name} is coming soon.`
-                      : `${it.name} requires setup. ${it.setupNote ?? ""}`,
-                    "info"
-                  )
-                }
-              >
-                {it.state === "COMING_SOON"
-                  ? "Coming soon"
-                  : it.state === "CONNECTED"
-                    ? "Manage"
-                    : "Configure"}
-              </Button>
+              <div className="mt-4 flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1"
+                  disabled={it.state === "COMING_SOON"}
+                  onClick={() =>
+                    toast(
+                      it.state === "COMING_SOON"
+                        ? `${it.name} is coming soon.`
+                        : `${it.name} requires setup. ${it.setupNote ?? ""}`,
+                      "info"
+                    )
+                  }
+                >
+                  {it.state === "COMING_SOON"
+                    ? "Coming soon"
+                    : it.state === "CONNECTED"
+                      ? "Manage"
+                      : "Configure"}
+                </Button>
+                {it.state === "NOT_CONFIGURED" && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      toast(
+                        `${it.name}: not configured — connection test unavailable until credentials are set.`,
+                        "info"
+                      )
+                    }
+                  >
+                    Test
+                  </Button>
+                )}
+              </div>
             </Card>
           ))}
         </div>

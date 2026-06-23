@@ -125,7 +125,32 @@ export const INTEGRATION_CATALOG: IntegrationCatalogEntry[] = [
     name: "Zapier / Webhooks",
     category: "Automation",
     color: "#FF4A00",
-    state: "COMING_SOON",
+    state: "NOT_CONFIGURED",
     description: "Trigger any workflow when a meeting ends.",
+    setupNote: "Set ZAPIER_WEBHOOK_URL to POST meeting events to your Zap.",
+  },
+  {
+    provider: "email-export",
+    name: "Email export",
+    category: "Automation",
+    color: "#4f46e5",
+    state: "NOT_CONFIGURED",
+    description: "Email summaries and action items after each meeting.",
+    setupNote: "Requires SMTP credentials (SMTP_HOST/SMTP_USER/SMTP_PASS).",
   },
 ];
+
+/** Maps an integration provider to the env vars that enable it. */
+export const INTEGRATION_ENV_VARS: Record<string, string[]> = {
+  zoom: ["ZOOM_CLIENT_ID", "ZOOM_CLIENT_SECRET"],
+  "google-meet": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
+  "google-calendar": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
+  "outlook-calendar": ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET"],
+  teams: ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET"],
+  slack: ["SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET"],
+  notion: ["NOTION_CLIENT_ID", "NOTION_CLIENT_SECRET"],
+  hubspot: ["HUBSPOT_CLIENT_ID", "HUBSPOT_CLIENT_SECRET"],
+  salesforce: ["SALESFORCE_CLIENT_ID", "SALESFORCE_CLIENT_SECRET"],
+  zapier: ["ZAPIER_WEBHOOK_URL"],
+  "email-export": ["SMTP_HOST", "SMTP_USER", "SMTP_PASS"],
+};

@@ -45,8 +45,10 @@ interface DebugInfo {
   packetsSent: number;
   packetsReceived: number;
   chunkSize: number;
+  dgConnecting: boolean;
   dgConnected: boolean;
   dgEvents: number;
+  dgReason: string;
   lastInterim: string;
   lastFinal: string;
 }
@@ -91,8 +93,10 @@ export function LiveMeetingPage() {
     packetsSent: 0,
     packetsReceived: 0,
     chunkSize: 0,
+    dgConnecting: false,
     dgConnected: false,
     dgEvents: 0,
+    dgReason: "",
     lastInterim: "",
     lastFinal: "",
   });
@@ -143,8 +147,10 @@ export function LiveMeetingPage() {
       packetsSent: 0,
       packetsReceived: 0,
       chunkSize: 0,
+      dgConnecting: false,
       dgConnected: false,
       dgEvents: 0,
+      dgReason: "",
       lastInterim: "",
       lastFinal: "",
     });
@@ -200,8 +206,21 @@ export function LiveMeetingPage() {
       if (s.state) setEngineState(s.state as EngineState);
     });
     socket.on(SOCKET_EVENTS.DG_STATUS, (s) => {
-      if (DEV)
-        setDebug((d) => ({ ...d, dgConnected: s.connected, dgEvents: s.events ?? d.dgEvents }));
+      if (DEV) {
+        // eslint-disable-next-line no-console
+        console.log("[deepgram] status:", s);
+        setDebug((d) => ({
+          ...d,
+          dgConnecting: Boolean(s.connecting),
+          dgConnected: Boolean(s.connected),
+          dgEvents: s.events ?? d.dgEvents,
+          dgReason: s.reason ?? d.dgReason,
+        }));
+      }
+      // Surface an unexpected close reason to the host as an STT error.
+      if (!s.connected && !s.connecting && s.reason) {
+        setSttError((prev) => prev ?? `Deepgram ${s.reason}`);
+      }
     });
     socket.on(SOCKET_EVENTS.AUDIO_ACK, (a) => {
       if (DEV) setDebug((d) => ({ ...d, packetsReceived: a.received }));
@@ -234,7 +253,7 @@ export function LiveMeetingPage() {
               console.log("[audio] chunk sent", e.data.size, "bytes", mimeType);
           }
         };
-        recorder.start(250); // 250ms chunks for low latency
+        recorder.start(150); // 150ms chunks for low-latency interim results
         if (DEV) console.info("[audio] MediaRecorder started", mimeType);
       } catch (err) {
         toast("Could not start audio recorder on this browser.", "error");
@@ -512,8 +531,18 @@ export function LiveMeetingPage() {
                 <Row k="Chunk size" v={`${debug.chunkSize} B`} />
                 <Row k="Packets sent" v={String(debug.packetsSent)} />
                 <Row k="Packets recv" v={String(debug.packetsReceived)} />
-                <Row k="Deepgram" v={debug.dgConnected ? "connected" : "disconnected"} />
+                <Row
+                  k="Deepgram"
+                  v={
+                    debug.dgConnected
+                      ? "connected"
+                      : debug.dgConnecting
+                        ? "connecting…"
+                        : "disconnected"
+                  }
+                />
                 <Row k="DG events" v={String(debug.dgEvents)} />
+                <Row k="DG reason" v={debug.dgReason || "—"} />
                 <Row k="Last interim" v={debug.lastInterim.slice(0, 28) || "—"} />
                 <Row k="Last final" v={debug.lastFinal.slice(0, 28) || "—"} />
               </dl>
