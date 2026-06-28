@@ -86,6 +86,7 @@ model User {
   meetings     Meeting[]         @relation("MeetingCreator")
   actionItems  ActionItem[]
   chatMessages ChatMessage[]
+  privateAssistSuggestions PrivateAssistSuggestion[]
   usageRecords UsageRecord[]
   auditLogs    AuditLog[]
 }
@@ -143,6 +144,7 @@ model Meeting {
   shared        Boolean      @default(false)
   shareId       String?      @unique
   publishedNotes String[]    @default([])
+  demoMode     Boolean       @default(false)
   createdById  String
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
@@ -153,10 +155,26 @@ model Meeting {
   summary   MeetingSummary?
   actionItems ActionItem[]
   chatMessages ChatMessage[]
+  privateAssistSuggestions PrivateAssistSuggestion[]
   usageRecords UsageRecord[]
 
   @@index([workspaceId])
   @@index([status])
+}
+
+model PrivateAssistSuggestion {
+  id         String   @id @default(cuid())
+  meetingId  String
+  userId     String
+  question   String
+  suggestion String
+  createdAt  DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+  @@index([userId])
 }
 
 model TranscriptSegment {
@@ -167,6 +185,11 @@ model TranscriptSegment {
   startTime  Float    @default(0)
   endTime    Float    @default(0)
   confidence Float?
+  // Host curation flags (set from the transcript segment actions UI).
+  edited       Boolean @default(false)
+  highlighted  Boolean @default(false)
+  isDecision   Boolean @default(false)
+  isActionItem Boolean @default(false)
   createdAt  DateTime @default(now())
 
   meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)

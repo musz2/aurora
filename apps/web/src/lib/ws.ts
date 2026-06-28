@@ -3,6 +3,26 @@ import { useAuthStore } from "@/store/auth";
 type Handler = (payload: any) => void;
 export type ConnState = "connecting" | "open" | "closed" | "reconnecting";
 
+function socketUrl(token: string | null): string {
+  const configured = import.meta.env.VITE_WS_URL?.trim();
+  if (configured) {
+    const fallbackProto = window.location.protocol === "https:" ? "wss" : "ws";
+    const raw = configured.startsWith("/")
+      ? `${fallbackProto}://${window.location.host}${configured}`
+      : configured;
+    const url = new URL(raw);
+    if (url.protocol === "http:") url.protocol = "ws:";
+    if (url.protocol === "https:") url.protocol = "wss:";
+    url.searchParams.set("token", token ?? "");
+    return url.toString();
+  }
+
+  const proto = window.location.protocol === "https:" ? "wss" : "ws";
+  const url = new URL(`${proto}://${window.location.host}/ws`);
+  url.searchParams.set("token", token ?? "");
+  return url.toString();
+}
+
 /** Typed WebSocket client for the live meeting room, with auto-reconnect. */
 export class AuroraSocket {
   private ws: WebSocket | null = null;
@@ -19,8 +39,7 @@ export class AuroraSocket {
 
   connect(): AuroraSocket {
     const token = useAuthStore.getState().accessToken;
-    const proto = window.location.protocol === "https:" ? "wss" : "ws";
-    const url = `${proto}://${window.location.host}/ws?token=${token ?? ""}`;
+    const url = socketUrl(token);
     this.stateCb?.(this.reconnectAttempts > 0 ? "reconnecting" : "connecting");
     this.ws = new WebSocket(url);
 

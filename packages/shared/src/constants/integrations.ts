@@ -1,15 +1,23 @@
 /**
- * Honest integration catalog. No OAuth flows are implemented yet, so every
- * provider reports an accurate state — never a fake "Connected".
+ * Honest integration catalog. Runtime routes decorate these base entries with
+ * workspace-aware live, mock, approval, failed, and connection states.
  *
  * - NOT_CONFIGURED: supported, but requires OAuth credentials / env setup.
+ * - MOCK_MODE: local-development flow is available without credentials.
+ * - NEEDS_APPROVAL: provider credentials exist, but workspace/user OAuth or
+ *   provider marketplace approval is still required.
+ * - FAILED: last live action failed.
  * - COMING_SOON: planned, not yet available.
- * - CONNECTED is only ever set when a real OAuth connection exists (none yet).
+ * - CONNECTED is only ever set when a real OAuth/private-token connection exists.
  */
 export type IntegrationState =
   | "CONNECTED"
+  | "DISCONNECTED"
   | "NOT_CONFIGURED"
-  | "COMING_SOON";
+  | "COMING_SOON"
+  | "MOCK_MODE"
+  | "NEEDS_APPROVAL"
+  | "FAILED";
 
 export interface IntegrationCatalogEntry {
   provider: string;
@@ -47,8 +55,9 @@ export const INTEGRATION_CATALOG: IntegrationCatalogEntry[] = [
     name: "Microsoft Teams",
     category: "Meetings",
     color: "#5059C9",
-    state: "COMING_SOON",
-    description: "Capture Microsoft Teams meetings.",
+    state: "MOCK_MODE",
+    description: "Auto-join Teams meetings or post summaries to a channel.",
+    setupNote: "Requires Microsoft OAuth credentials for live Graph API access.",
   },
   {
     provider: "google-calendar",
@@ -57,7 +66,7 @@ export const INTEGRATION_CATALOG: IntegrationCatalogEntry[] = [
     color: "#4285F4",
     state: "NOT_CONFIGURED",
     description: "Sync upcoming meetings and enable auto-record.",
-    setupNote: "Requires Google OAuth (GOOGLE_CLIENT_ID/SECRET).",
+    setupNote: "Requires Google OAuth and GOOGLE_REDIRECT_URI.",
   },
   {
     provider: "outlook-calendar",
@@ -66,7 +75,7 @@ export const INTEGRATION_CATALOG: IntegrationCatalogEntry[] = [
     color: "#0078D4",
     state: "NOT_CONFIGURED",
     description: "Sync Outlook calendar events.",
-    setupNote: "Requires Microsoft OAuth credentials.",
+    setupNote: "Requires Microsoft OAuth credentials and MICROSOFT_REDIRECT_URI.",
   },
   {
     provider: "slack",
@@ -91,16 +100,18 @@ export const INTEGRATION_CATALOG: IntegrationCatalogEntry[] = [
     name: "Google Drive",
     category: "Storage",
     color: "#1FA463",
-    state: "COMING_SOON",
+    state: "MOCK_MODE",
     description: "Save recordings and transcripts to Drive.",
+    setupNote: "Requires Google OAuth credentials and a Drive folder.",
   },
   {
     provider: "dropbox",
     name: "Dropbox",
     category: "Storage",
     color: "#0061FF",
-    state: "COMING_SOON",
+    state: "MOCK_MODE",
     description: "Save recordings and transcripts to Dropbox.",
+    setupNote: "Requires Dropbox OAuth credentials.",
   },
   {
     provider: "hubspot",
@@ -119,6 +130,24 @@ export const INTEGRATION_CATALOG: IntegrationCatalogEntry[] = [
     state: "NOT_CONFIGURED",
     description: "Sync meeting outcomes to Salesforce opportunities.",
     setupNote: "Requires a Salesforce connected app.",
+  },
+  {
+    provider: "jira",
+    name: "Jira",
+    category: "Tasks",
+    color: "#0052CC",
+    state: "MOCK_MODE",
+    description: "Create issues from action items.",
+    setupNote: "Requires Jira base URL, email, and API token.",
+  },
+  {
+    provider: "asana",
+    name: "Asana",
+    category: "Tasks",
+    color: "#F06A6A",
+    state: "MOCK_MODE",
+    description: "Create project tasks from action items.",
+    setupNote: "Requires an Asana personal access token and project ID.",
   },
   {
     provider: "zapier",
@@ -144,13 +173,18 @@ export const INTEGRATION_CATALOG: IntegrationCatalogEntry[] = [
 export const INTEGRATION_ENV_VARS: Record<string, string[]> = {
   zoom: ["ZOOM_CLIENT_ID", "ZOOM_CLIENT_SECRET"],
   "google-meet": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
-  "google-calendar": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
-  "outlook-calendar": ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET"],
-  teams: ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET"],
-  slack: ["SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET"],
-  notion: ["NOTION_CLIENT_ID", "NOTION_CLIENT_SECRET"],
-  hubspot: ["HUBSPOT_CLIENT_ID", "HUBSPOT_CLIENT_SECRET"],
+  "google-calendar": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"],
+  "outlook-calendar": ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET", "MICROSOFT_REDIRECT_URI"],
+  teams: ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET", "MICROSOFT_REDIRECT_URI"],
+  "microsoft-teams": ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET"],
+  slack: ["SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET", "SLACK_REDIRECT_URI"],
+  notion: ["NOTION_API_KEY", "NOTION_DATABASE_ID"],
+  "google-drive": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"],
+  dropbox: ["DROPBOX_CLIENT_ID", "DROPBOX_CLIENT_SECRET"],
+  hubspot: ["HUBSPOT_ACCESS_TOKEN"],
   salesforce: ["SALESFORCE_CLIENT_ID", "SALESFORCE_CLIENT_SECRET"],
+  jira: ["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"],
+  asana: ["ASANA_ACCESS_TOKEN", "ASANA_PROJECT_ID"],
   zapier: ["ZAPIER_WEBHOOK_URL"],
   "email-export": ["SMTP_HOST", "SMTP_USER", "SMTP_PASS"],
 };

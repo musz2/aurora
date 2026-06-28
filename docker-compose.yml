@@ -1,7 +1,6 @@
 services:
   db:
     image: ankane/pgvector:latest
-    container_name: aurora-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: aurora
@@ -19,7 +18,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: aurora-redis
     restart: unless-stopped
     ports:
       - "6379:6379"

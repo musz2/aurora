@@ -1,14 +1,34 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { Calendar, Video, Check } from "lucide-react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { Calendar, Video, Check, Bot, MonitorSpeaker, Link2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, Badge } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { PageTitle } from "@/components/app/shared";
+import { useToast } from "@/components/ui/Toast";
 import { formatDateTime } from "@/lib/format";
 import type { MeetingDto } from "@aurora/shared";
 
+interface CalendarEventDto {
+  id: string;
+  title: string;
+  startsAt: string;
+  endsAt: string | null;
+  attendees: string[];
+  meetingLink: { provider: string; url: string; meetingId?: string } | null;
+  autoJoinEligible: boolean;
+  consentRequired: boolean;
+  source?: string;
+}
+
+const LIMITATIONS: Record<string, string> = {
+  zoom: "Zoom bot joining requires an approved Zoom app and visible participant identity.",
+  "google-meet": "Google Meet bot joining may require Google OAuth scopes and workspace policy approval.",
+  teams: "Teams bot joining requires Microsoft Graph permissions and tenant admin consent.",
+};
+
 export function CalendarPage() {
+  const { toast } = useToast();
   const [autoRecord, setAutoRecord] = useState(true);
   const [connected, setConnected] = useState<Record<string, boolean>>({
     google: true,
@@ -24,6 +44,46 @@ export function CalendarPage() {
         })
       ).data.meetings,
   });
+
+  const { data: calendarData } = useQuery({
+    queryKey: ["calendar-events"],
+    queryFn: async () =>
+      (await api.get<{ mode: "mock" | "live"; events: CalendarEventDto[]; message: string }>("/calendar/events"))
+        .data,
+  });
+
+  const autoJoin = useMutation({
+    mutationFn: async ({
+      event,
+      captureMode,
+    }: {
+      event: CalendarEventDto;
+      captureMode: "bot" | "desktop";
+    }) =>
+      (
+        await api.post("/calendar/auto-join", {
+          event: {
+            id: event.id,
+            title: event.title,
+            description: event.meetingLink?.url,
+            startsAt: event.startsAt,
+            endsAt: event.endsAt,
+            attendees: event.attendees,
+          },
+          captureMode,
+        })
+      ).data as { result: { status: string; message: string; participantNotification: string } },
+    onSuccess: (data) => toast(`${data.result.status}: ${data.result.message}`, "info"),
+    onError: () => toast("Could not prepare meeting capture.", "error"),
+  });
+
+  const prepareBot = (event: CalendarEventDto) => {
+    const provider = event.meetingLink?.provider ?? "meeting";
+    const ok = window.confirm(
+      `Aurora will only prepare a visible bot participant after you confirm participant consent. ${LIMITATIONS[provider] ?? ""}`
+    );
+    if (ok) autoJoin.mutate({ event, captureMode: "bot" });
+  };
 
   return (
     <div>
@@ -104,10 +164,15 @@ export function CalendarPage() {
         </div>
 
         <div className="lg:col-span-2">
-          <h2 className="mb-3 font-semibold text-ink">Upcoming meetings</h2>
+          <h2 className="mb-3 font-semibold text-ink">Detected calendar meetings</h2>
+          {calendarData?.message && (
+            <p className="mb-3 rounded-xl border border-black/[0.06] bg-white px-4 py-3 text-sm text-muted">
+              {calendarData.message}
+            </p>
+          )}
           <div className="space-y-3">
-            {data && data.length > 0 ? (
-              data.map((m) => (
+            {calendarData?.events && calendarData.events.length > 0 ? (
+              calendarData.events.map((m) => (
                 <Card
                   key={m.id}
                   className="flex flex-wrap items-center justify-between gap-3 p-5"
@@ -119,15 +184,37 @@ export function CalendarPage() {
                     <div>
                       <p className="font-medium text-ink">{m.title}</p>
                       <p className="text-sm text-muted">
-                        {formatDateTime(m.startedAt)} •{" "}
-                        {m.participants.length} participants
+                        {formatDateTime(m.startsAt)} • {m.attendees.length} participants
+                      </p>
+                      {m.meetingLink && (
+                        <p className="mt-1 inline-flex items-center gap-1 text-xs text-aurora-700">
+                          <Link2 className="h-3 w-3" /> {m.meetingLink.provider}
+                        </p>
+                      )}
+                      <p className="mt-1 text-xs text-muted">
+                        Source: {m.source ?? "calendar"}{m.meetingLink ? ` · ${LIMITATIONS[m.meetingLink.provider] ?? "Visible join preparation required."}` : ""}
                       </p>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Badge tone="indigo">Auto-record on</Badge>
-                    <Button to="/app/live" size="sm" variant="secondary">
-                      <Video className="h-4 w-4" /> Join & record
+                    <Badge tone={m.autoJoinEligible ? "indigo" : "slate"}>
+                      {m.autoJoinEligible ? "Auto-join ready" : "No link"}
+                    </Badge>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={!m.autoJoinEligible || autoJoin.isPending}
+                      onClick={() => prepareBot(m)}
+                    >
+                      <Bot className="h-4 w-4" /> Prepare bot
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={!m.autoJoinEligible || autoJoin.isPending}
+                      onClick={() => autoJoin.mutate({ event: m, captureMode: "desktop" })}
+                    >
+                      <MonitorSpeaker className="h-4 w-4" /> No bot
                     </Button>
                   </div>
                 </Card>
@@ -138,6 +225,25 @@ export function CalendarPage() {
               </Card>
             )}
           </div>
+
+          {data && data.length > 0 && (
+            <>
+              <h2 className="mb-3 mt-6 font-semibold text-ink">Scheduled in Aurora</h2>
+              <div className="space-y-3">
+                {data.map((m) => (
+                  <Card key={m.id} className="flex items-center justify-between gap-3 p-5">
+                    <div>
+                      <p className="font-medium text-ink">{m.title}</p>
+                      <p className="text-sm text-muted">{formatDateTime(m.startedAt)}</p>
+                    </div>
+                    <Button to="/app/live" size="sm" variant="secondary">
+                      <Video className="h-4 w-4" /> Join & record
+                    </Button>
+                  </Card>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

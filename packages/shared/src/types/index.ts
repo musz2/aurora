@@ -32,6 +32,10 @@ export interface TranscriptSegmentDto {
   startTime: number;
   endTime: number;
   confidence: number | null;
+  edited: boolean;
+  highlighted: boolean;
+  isDecision: boolean;
+  isActionItem: boolean;
   createdAt: string;
 }
 
@@ -59,6 +63,42 @@ export interface ActionItemDto {
   updatedAt: string;
 }
 
+export interface PrivateAssistSuggestionDto {
+  id: string;
+  meetingId: string;
+  userId: string;
+  question: string;
+  suggestion: string;
+  createdAt: string;
+}
+
+export interface SharedTranscriptSegmentDto {
+  id: string;
+  speakerName: string;
+  text: string;
+  startTime: number;
+}
+
+export interface SharedSessionSummaryDto {
+  overview: string;
+  keyPoints: string[];
+  decisions: string[];
+}
+
+export interface PublicSessionDto {
+  id: string;
+  title: string;
+  status: MeetingStatus;
+  live: boolean;
+  ended: boolean;
+  startedAt: string | null;
+  endedAt: string | null;
+  participants: string[];
+  publishedNotes: string[];
+  segments: SharedTranscriptSegmentDto[];
+  summary: SharedSessionSummaryDto | null;
+}
+
 export interface MeetingDto {
   id: string;
   workspaceId: string;
@@ -75,6 +115,7 @@ export interface MeetingDto {
   shared?: boolean;
   shareId?: string | null;
   publishedNotes?: string[];
+  demoMode?: boolean;
   createdById: string;
   createdAt: string;
   updatedAt: string;

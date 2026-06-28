@@ -13,6 +13,8 @@ import {
   WifiOff,
   AlertTriangle,
   PlayCircle,
+  Pause,
+  Play,
   Bug,
 } from "lucide-react";
 import { SOCKET_EVENTS, type UsageSummary, type SessionMode } from "@aurora/shared";
@@ -26,7 +28,17 @@ import { Button } from "@/components/ui/Button";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { MicSelector, MicLevelMeter } from "@/components/app/MicControls";
 import { TranscriptPanel, type FinalSegment } from "@/components/app/TranscriptPanel";
-import { AssistantPanel, type Suggestion } from "@/components/app/AssistantPanel";
+import {
+  AssistantPanel,
+  type AssistantMode,
+  type PrivateNote,
+  type Suggestion,
+} from "@/components/app/AssistantPanel";
+import {
+  FinalizationReview,
+  type FinalizationMeta,
+} from "@/components/app/FinalizationReview";
+import type { MeetingDto } from "@aurora/shared";
 import { UsageMeter } from "@/components/app/shared";
 import { formatClock } from "@/lib/format";
 
@@ -78,6 +90,7 @@ export function LiveMeetingPage() {
   const [consented, setConsented] = useState(false);
   const [pendingMode, setPendingMode] = useState<SessionMode>("real");
   const [recording, setRecording] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [mode, setMode] = useState<SessionMode>("real");
   const [processing, setProcessing] = useState(false);
   const [segments, setSegments] = useState<FinalSegment[]>([]);
@@ -87,8 +100,15 @@ export function LiveMeetingPage() {
   const [engineState, setEngineState] = useState<EngineState>("idle");
   const [sttError, setSttError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [assistantMode, setAssistantMode] = useState<AssistantMode>("Technical Meeting");
+  const [privateNotes, setPrivateNotes] = useState<PrivateNote[]>([]);
+  const [sharedNotes, setSharedNotes] = useState<string[]>([]);
   const [title, setTitle] = useState("Live Session");
   const [shareLink, setShareLink] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewMeeting, setReviewMeeting] = useState<MeetingDto | null>(null);
+  const [reviewMeta, setReviewMeta] = useState<FinalizationMeta | null>(null);
   const [debug, setDebug] = useState<DebugInfo>({
     packetsSent: 0,
     packetsReceived: 0,
@@ -138,8 +158,12 @@ export function LiveMeetingPage() {
     const m = pendingMode;
     setShowConsent(false);
     setMode(m);
+    setPaused(false);
     setSegments([]);
     setSuggestions([]);
+    setPrivateNotes([]);
+    setSharedNotes([]);
+    setShareLink(null);
     setInterim(null);
     setSttError(null);
     setElapsed(0);
@@ -165,13 +189,10 @@ export function LiveMeetingPage() {
       }
     }
 
-    // Create the session + a public share link.
+    // Create the private session. Sharing is explicit and opt-in.
     try {
       const { data } = await api.post("/meetings", { title, source: "LIVE" });
       meetingIdRef.current = data.meeting.id;
-      const share = await api.post(`/meetings/${data.meeting.id}/share`, { shared: true });
-      if (share.data.shareId)
-        setShareLink(`${window.location.origin}/s/${share.data.shareId}`);
     } catch {
       meetingIdRef.current = "";
     }
@@ -227,12 +248,22 @@ export function LiveMeetingPage() {
     });
     socket.on(SOCKET_EVENTS.AI_SUGGESTION, (s) =>
       setSuggestions((prev) => [
-        { id: crypto.randomUUID(), question: s.question, suggestion: s.suggestion, configured: s.configured !== false },
+        {
+          id: crypto.randomUUID(),
+          question: s.question,
+          suggestion: s.suggestion,
+          configured: s.configured !== false,
+          mode: s.mode,
+        },
         ...prev,
       ])
     );
 
-    socket.send(SOCKET_EVENTS.MEETING_START, { meetingId: meetingIdRef.current, mode: m });
+    socket.send(SOCKET_EVENTS.MEETING_START, {
+      meetingId: meetingIdRef.current,
+      mode: m,
+      assistantMode,
+    });
 
     // Stream real microphone audio as binary frames (real mode only).
     if (m === "real" && stream) {
@@ -266,6 +297,30 @@ export function LiveMeetingPage() {
     timerRef.current = window.setInterval(() => setElapsed((e) => e + 1), 1000);
   };
 
+  /** Pause/resume the live capture without ending the session. */
+  const togglePause = () => {
+    const socket = socketRef.current;
+    if (!socket || !recording) return;
+    const id = meetingIdRef.current;
+    if (!paused) {
+      socket.send(SOCKET_EVENTS.MEETING_PAUSE, { meetingId: id });
+      if (recorderRef.current?.state === "recording") recorderRef.current.pause();
+      if (timerRef.current) clearInterval(timerRef.current);
+      setPaused(true);
+      setEngineState("idle");
+      if (id) api.post(`/meetings/${id}/pause`).catch(() => {});
+      toast("Recording paused", "success");
+    } else {
+      socket.send(SOCKET_EVENTS.MEETING_RESUME, { meetingId: id });
+      if (recorderRef.current?.state === "paused") recorderRef.current.resume();
+      timerRef.current = window.setInterval(() => setElapsed((e) => e + 1), 1000);
+      setPaused(false);
+      setEngineState(mode === "real" ? "listening" : "live");
+      if (id) api.post(`/meetings/${id}/resume`).catch(() => {});
+      toast("Recording resumed", "success");
+    }
+  };
+
   const stopRecording = async () => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (recorderRef.current && recorderRef.current.state !== "inactive")
@@ -273,27 +328,58 @@ export function LiveMeetingPage() {
     socketRef.current?.send(SOCKET_EVENTS.MEETING_STOP, { meetingId: meetingIdRef.current });
     mic.stop();
     setRecording(false);
+    setPaused(false);
     setEngineState("finalized");
     setProcessing(true);
 
-    const id = meetingIdRef.current;
-    if (id) {
-      try {
-        await api.post(`/meetings/${id}/stop`);
-        await api.post(`/meetings/${id}/summarize`);
-        socketRef.current?.close();
-        navigate(`/app/meetings/${id}`);
-        return;
-      } catch (err) {
-        toast(apiError(err, "Could not finalize session"), "error");
-      }
-    }
-    setProcessing(false);
     socketRef.current?.close();
+
+    const id = meetingIdRef.current;
+    if (!id) {
+      setProcessing(false);
+      return;
+    }
+    // Open the finalization review and run finalize in the background.
+    setReviewOpen(true);
+    await runFinalize(id);
+    setProcessing(false);
+  };
+
+  /** Generate (or regenerate) the finalization output for the review screen. */
+  const runFinalize = async (id: string) => {
+    setProcessing(true);
+    try {
+      await api.post(`/meetings/${id}/stop`).catch(() => {});
+      // /finalize generates summary/action items/speaker breakdown + audit trail.
+      const { data } = await api.post(`/meetings/${id}/finalize`);
+      setReviewMeeting(data.meeting as MeetingDto);
+      setReviewMeta(data.finalization as FinalizationMeta);
+    } catch (err) {
+      toast(apiError(err, "Could not finalize session"), "error");
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const discardMeeting = async () => {
+    const id = meetingIdRef.current;
+    setReviewOpen(false);
+    if (id) {
+      await api.delete(`/meetings/${id}`).catch(() => {});
+      toast("Meeting discarded", "info");
+    }
+    setReviewMeeting(null);
+    setReviewMeta(null);
+  };
+
+  const finishReview = () => {
+    const id = meetingIdRef.current;
+    setReviewOpen(false);
+    if (id) navigate(`/app/meetings/${id}`);
   };
 
   const askLive = (q: string) =>
-    socketRef.current?.send(SOCKET_EVENTS.AI_ASK_LIVE, { question: q });
+    socketRef.current?.send(SOCKET_EVENTS.AI_ASK_LIVE, { question: q, assistantMode });
 
   const publishToTranscript = (text: string) => {
     const seg: FinalSegment = {
@@ -315,18 +401,85 @@ export function LiveMeetingPage() {
     toast("Published to the shared transcript", "success");
   };
 
-  const addNote = (text: string) => {
+  const publishSharedNote = (text: string) => {
     if (!meetingIdRef.current) return;
     api
       .post(`/meetings/${meetingIdRef.current}/notes`, { note: text })
-      .then(() => toast("Added to shared notes", "success"))
+      .then(() => {
+        setSharedNotes((prev) => [...prev, text]);
+        toast("Published to shared notes", "success");
+      })
       .catch(() => toast("Could not add note", "error"));
+  };
+
+  const savePrivateNote = (text: string) => {
+    if (!meetingIdRef.current) {
+      setPrivateNotes((prev) => [{ id: crypto.randomUUID(), text }, ...prev]);
+      return;
+    }
+    api
+      .post(`/meetings/${meetingIdRef.current}/private-notes`, { text })
+      .then((res) => {
+        const note = res.data.note;
+        setPrivateNotes((prev) => [
+          { id: note.id, text: note.suggestion, createdAt: note.createdAt },
+          ...prev,
+        ]);
+        toast("Saved private note", "success");
+      })
+      .catch(() => toast("Could not save private note", "error"));
+  };
+
+  const createFollowUpTask = (text: string) => {
+    if (!meetingIdRef.current) return;
+    api
+      .post(`/meetings/${meetingIdRef.current}/action-items`, {
+        task: text,
+        sourceText: "Created from private assistant suggestion",
+      })
+      .then(() => toast("Converted to follow-up task", "success"))
+      .catch(() => toast("Could not create task", "error"));
   };
 
   const copyLink = () => {
     if (!shareLink) return;
     navigator.clipboard.writeText(shareLink);
     toast("Share link copied", "success");
+  };
+
+  const createShareLink = async () => {
+    if (!meetingIdRef.current) {
+      toast("Start a session before sharing.", "error");
+      return;
+    }
+    setSharing(true);
+    try {
+      const { data } = await api.post(`/meetings/${meetingIdRef.current}/share`, {
+        shared: true,
+      });
+      if (data.shareId) {
+        setShareLink(`${window.location.origin}/s/${data.shareId}`);
+        toast("Share link created", "success");
+      }
+    } catch (err) {
+      toast(apiError(err, "Could not create share link"), "error");
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const revokeShareLink = async () => {
+    if (!meetingIdRef.current) return;
+    setSharing(true);
+    try {
+      await api.post(`/meetings/${meetingIdRef.current}/share`, { shared: false });
+      setShareLink(null);
+      toast("Share link revoked", "success");
+    } catch (err) {
+      toast(apiError(err, "Could not revoke share link"), "error");
+    } finally {
+      setSharing(false);
+    }
   };
 
   const connPill = () => {
@@ -398,11 +551,11 @@ export function LiveMeetingPage() {
           )}
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {recording && (
-              <StatusPill tone="live" pulse>
-                REC {formatClock(elapsed)}
+              <StatusPill tone={paused ? "muted" : "live"} pulse={!paused}>
+                {paused ? "PAUSED" : "REC"} {formatClock(elapsed)}
               </StatusPill>
             )}
-            {recording && (
+            {recording && !paused && (
               <StatusPill tone={engineState === "error" ? "error" : engineState === "processing" ? "processing" : "success"}>
                 {ENGINE_LABEL[engineState]}
               </StatusPill>
@@ -430,9 +583,27 @@ export function LiveMeetingPage() {
               </Button>
             </>
           ) : (
-            <Button variant="danger" size="lg" onClick={stopRecording}>
-              <Square className="h-4 w-4" /> End & summarize
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="lg"
+                onClick={togglePause}
+                aria-pressed={paused}
+              >
+                {paused ? (
+                  <>
+                    <Play className="h-4 w-4" /> Resume
+                  </>
+                ) : (
+                  <>
+                    <Pause className="h-4 w-4" /> Pause
+                  </>
+                )}
+              </Button>
+              <Button variant="danger" size="lg" onClick={stopRecording}>
+                <Square className="h-4 w-4" /> End & summarize
+              </Button>
+            </>
           )}
         </div>
       </div>
@@ -493,27 +664,56 @@ export function LiveMeetingPage() {
             </Card>
           )}
 
-          {shareLink && (
+          {recording && (
             <Card className="p-4">
               <div className="flex items-center gap-2 text-sm font-medium text-ink">
                 <Link2 className="h-4 w-4 text-aurora-600" /> Share session
               </div>
               <p className="mt-1 text-xs text-muted">
-                Viewers see the shared transcript and published notes only.
+              Private by default. Viewers see only the shared transcript and published notes.
               </p>
-              <div className="mt-2 flex items-center gap-2">
-                <input
-                  readOnly
-                  value={shareLink}
-                  className="flex-1 truncate rounded-lg border border-black/10 bg-black/[0.02] px-2 py-1.5 text-xs text-muted"
-                />
-                <button onClick={copyLink} className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-ink text-white">
-                  <Copy className="h-3.5 w-3.5" />
-                </button>
-              </div>
-              <div className="mt-2 flex items-center gap-1.5 text-xs text-muted">
-                <Users className="h-3.5 w-3.5" /> Live viewers join via the link
-              </div>
+              {shareLink ? (
+                <>
+                  <div className="mt-2 flex items-center gap-2">
+                    <input
+                      readOnly
+                      value={shareLink}
+                      className="flex-1 truncate rounded-lg border border-black/10 bg-black/[0.02] px-2 py-1.5 text-xs text-muted"
+                    />
+                    <button
+                      onClick={copyLink}
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-ink text-white"
+                      aria-label="Copy share link"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                  <div className="mt-2 flex items-center gap-1.5 text-xs text-muted">
+                    <Users className="h-3.5 w-3.5" /> Live viewers join via the link
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 w-full"
+                    onClick={revokeShareLink}
+                    disabled={sharing}
+                  >
+                    {sharing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                    Revoke link
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  className="mt-3 w-full"
+                  onClick={createShareLink}
+                  disabled={sharing}
+                >
+                  {sharing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+                  Create share link
+                </Button>
+              )}
             </Card>
           )}
 
@@ -571,14 +771,35 @@ export function LiveMeetingPage() {
             <AssistantPanel
               aiConfigured={config.services.ai}
               recording={recording}
+              mode={assistantMode}
+              onModeChange={setAssistantMode}
               suggestions={suggestions}
+              privateNotes={privateNotes}
+              sharedNotes={sharedNotes}
               onAsk={askLive}
-              onPublish={publishToTranscript}
-              onAddNote={addNote}
+              onPublishTranscript={publishToTranscript}
+              onPublishSharedNote={publishSharedNote}
+              onSavePrivateNote={savePrivateNote}
+              onCreateTask={createFollowUpTask}
             />
           </Card>
         </div>
       </div>
+
+      {/* Finalization review */}
+      {reviewOpen && (
+        <FinalizationReview
+          meetingId={meetingIdRef.current}
+          meeting={reviewMeeting}
+          meta={reviewMeta}
+          privateNotes={privateNotes}
+          sharedNotes={sharedNotes}
+          processing={processing}
+          onRegenerate={() => runFinalize(meetingIdRef.current)}
+          onSaved={finishReview}
+          onDiscard={discardMeeting}
+        />
+      )}
 
       {/* Consent modal */}
       {showConsent && (

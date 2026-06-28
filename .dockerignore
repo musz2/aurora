@@ -1,0 +1,28 @@
+# Keep the Docker build context small and the image clean.
+**/node_modules
+**/dist
+**/.turbo
+**/.next
+**/.vite
+**/coverage
+
+# Web + desktop apps are not part of the server image.
+apps/web/dist
+apps/desktop/dist
+apps/desktop/release
+
+# VCS / editor / OS noise
+.git
+.gitignore
+.github
+**/.DS_Store
+**/*.log
+
+# Local env + secrets (never bake into the image, at any depth)
+**/.env
+**/.env.*
+!.env.example
+
+# Docs / scratch
+*.md
+!README.md

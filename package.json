@@ -6,15 +6,25 @@
   "packageManager": "pnpm@9.15.4",
   "scripts": {
     "dev": "pnpm -r --parallel --filter=./apps/* dev",
-    "build": "pnpm --filter @aurora/shared build && pnpm --filter @aurora/server build && pnpm --filter @aurora/web build",
+    "build": "pnpm --filter @aurora/shared build && pnpm --filter @aurora/server build && pnpm --filter @aurora/web build && pnpm --filter @aurora/desktop build",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
     "db:migrate": "pnpm --filter @aurora/server db:migrate",
     "db:seed": "pnpm --filter @aurora/server db:seed",
     "db:studio": "pnpm --filter @aurora/server db:studio",
-    "db:generate": "pnpm --filter @aurora/server db:generate"
+    "db:generate": "pnpm --filter @aurora/server db:generate",
+    "db:deploy": "pnpm --filter @aurora/server db:deploy"
   },
   "engines": {
     "node": ">=20"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "@prisma/engines",
+      "prisma",
+      "esbuild",
+      "bcrypt"
+    ]
   }
 }

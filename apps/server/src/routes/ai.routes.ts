@@ -79,7 +79,9 @@ router.post(
     if (!meeting) throw notFound("Meeting not found");
     const summary = await generateMeetingSummary(
       meeting.title,
-      meeting.segments.map((s) => ({ speakerName: s.speakerName, text: s.text }))
+      meeting.segments.map((s) => ({ speakerName: s.speakerName, text: s.text })),
+      [],
+      { demoMode: meeting.demoMode }
     );
     res.json({ summary });
   })
@@ -109,7 +111,8 @@ router.post(
         dueDate: a.dueDate?.toISOString() ?? null,
         priority: a.priority,
         sourceText: a.sourceText,
-      }))
+      })),
+      { demoMode: meeting.demoMode }
     );
     res.json({ email });
   })

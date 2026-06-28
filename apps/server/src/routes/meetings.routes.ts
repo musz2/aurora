@@ -8,8 +8,11 @@ import { nanoid } from "nanoid";
 import { asyncHandler, notFound, badRequest } from "../utils/http.js";
 import { requireAuth } from "../middleware/auth.js";
 import {
+  serializeActionItem,
   serializeMeeting,
+  serializePrivateAssistSuggestion,
   serializeSegment,
+  serializeSummary,
 } from "../utils/serializers.js";
 import {
   extractActionItems,
@@ -18,6 +21,20 @@ import {
 } from "../services/ai.service.js";
 import { trackUsage } from "../services/usage.service.js";
 import { writeAudit } from "../services/audit.service.js";
+import {
+  exportMeeting,
+  exportResponseHeaders,
+  type ExportFormat,
+} from "../services/export.service.js";
+import { finalizeMeeting } from "../services/meeting-finalization.service.js";
+import {
+  SpeakerNameError,
+  validateRename,
+} from "../services/speaker.service.js";
+import {
+  SegmentPatchError,
+  buildSegmentUpdate,
+} from "../services/transcript-segment.service.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -121,7 +138,7 @@ router.post(
       data: { status: "RECORDING", startedAt: new Date() },
     });
     if (meeting.count === 0) throw notFound("Meeting not found");
-    await writeAudit(req.auth!.workspaceId, req.auth!.userId, "meeting.start", {
+    await writeAudit(req.auth!.workspaceId, req.auth!.userId, "meeting_started", {
       meetingId: req.params.id,
     });
     res.json({ ok: true });
@@ -149,7 +166,200 @@ router.post(
       existing.id,
       Math.max(1, Math.round(duration / 60))
     );
-    res.json({ ok: true });
+    await writeAudit(req.auth!.workspaceId, req.auth!.userId, "meeting_stopped", {
+      meetingId: existing.id,
+      duration,
+    });
+    res.json({ ok: true, duration });
+  })
+);
+
+/**
+ * Pause / resume are lifecycle signals. The durable status stays RECORDING (the
+ * meeting is still "live" from the workspace's perspective); the ephemeral
+ * paused/recording state lives on the socket/client. We record the audit trail.
+ */
+router.post(
+  "/:id/pause",
+  asyncHandler(async (req, res) => {
+    const meeting = await prisma.meeting.findFirst({
+      where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
+      select: { id: true },
+    });
+    if (!meeting) throw notFound("Meeting not found");
+    await writeAudit(req.auth!.workspaceId, req.auth!.userId, "meeting_paused", {
+      meetingId: meeting.id,
+    });
+    res.json({ ok: true, state: "paused" });
+  })
+);
+
+router.post(
+  "/:id/resume",
+  asyncHandler(async (req, res) => {
+    const meeting = await prisma.meeting.findFirst({
+      where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
+      select: { id: true },
+    });
+    if (!meeting) throw notFound("Meeting not found");
+    await prisma.meeting.update({
+      where: { id: meeting.id },
+      data: { status: "RECORDING" },
+    });
+    await writeAudit(req.auth!.workspaceId, req.auth!.userId, "meeting_resumed", {
+      meetingId: meeting.id,
+    });
+    res.json({ ok: true, state: "recording" });
+  })
+);
+
+/**
+ * Finalize a stopped meeting: generate summary/action items/speaker breakdown,
+ * persist them, mark COMPLETED, and return the full finalization payload for the
+ * review screen. Honest about mock vs real AI via `finalization.source`.
+ */
+router.post(
+  "/:id/finalize",
+  asyncHandler(async (req, res) => {
+    const meeting = await prisma.meeting.findFirst({
+      where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
+      include: { segments: { orderBy: { startTime: "asc" } } },
+    });
+    if (!meeting) throw notFound("Meeting not found");
+
+    await writeAudit(
+      req.auth!.workspaceId,
+      req.auth!.userId,
+      "meeting_finalizing",
+      { meetingId: meeting.id }
+    );
+
+    const vocab = await prisma.customVocabulary.findMany({
+      where: { workspaceId: req.auth!.workspaceId },
+      select: { term: true },
+    });
+    const transcript: TranscriptLine[] = meeting.segments.map((s) => ({
+      speakerName: s.speakerName,
+      text: s.text,
+    }));
+
+    let finalization;
+    try {
+      finalization = await finalizeMeeting({
+        title: meeting.title,
+        transcript,
+        vocabulary: vocab.map((v) => v.term),
+        demoMode: meeting.demoMode,
+        durationSeconds: meeting.duration,
+      });
+    } catch (err) {
+      await prisma.meeting
+        .update({ where: { id: meeting.id }, data: { status: "FAILED" } })
+        .catch(() => null);
+      await writeAudit(
+        req.auth!.workspaceId,
+        req.auth!.userId,
+        "meeting_failed",
+        { meetingId: meeting.id, reason: (err as Error).message }
+      );
+      throw err;
+    }
+
+    const { summary, actionItems } = finalization;
+    await prisma.$transaction(async (tx) => {
+      await tx.meetingSummary.upsert({
+        where: { meetingId: meeting.id },
+        create: {
+          meetingId: meeting.id,
+          overview: summary.overview,
+          keyPoints: summary.keyPoints,
+          decisions: summary.decisions,
+          followUpEmail: summary.followUpEmail,
+        },
+        update: {
+          overview: summary.overview,
+          keyPoints: summary.keyPoints,
+          decisions: summary.decisions,
+          followUpEmail: summary.followUpEmail,
+        },
+      });
+      await tx.actionItem.deleteMany({ where: { meetingId: meeting.id } });
+      for (const item of actionItems) {
+        await tx.actionItem.create({
+          data: {
+            meetingId: meeting.id,
+            assigneeName: item.assigneeName,
+            task: item.task,
+            dueDate: item.dueDate ? new Date(item.dueDate) : null,
+            priority: item.priority,
+            sourceText: item.sourceText,
+          },
+        });
+      }
+      await tx.meeting.update({
+        where: { id: meeting.id },
+        data: { status: "COMPLETED" },
+      });
+    });
+
+    await writeAudit(
+      req.auth!.workspaceId,
+      req.auth!.userId,
+      "meeting_completed",
+      { meetingId: meeting.id, source: finalization.source }
+    );
+
+    const full = await prisma.meeting.findUnique({
+      where: { id: meeting.id },
+      include: meetingInclude,
+    });
+    res.json({
+      meeting: serializeMeeting(full!),
+      finalization: {
+        source: finalization.source,
+        mock: finalization.mock,
+        label: finalization.label,
+        speakerSummaries: finalization.speakerSummaries,
+        questions: finalization.questions,
+        durationSeconds: finalization.durationSeconds,
+      },
+    });
+  })
+);
+
+/** Rename a speaker across all transcript segments of a meeting. */
+router.post(
+  "/:id/speakers/rename",
+  asyncHandler(async (req, res) => {
+    const meeting = await prisma.meeting.findFirst({
+      where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
+      select: { id: true },
+    });
+    if (!meeting) throw notFound("Meeting not found");
+
+    let from: string;
+    let to: string;
+    try {
+      ({ from, to } = validateRename(
+        (req.body?.from as string) ?? "",
+        (req.body?.to as string) ?? ""
+      ));
+    } catch (err) {
+      if (err instanceof SpeakerNameError) throw badRequest(err.message);
+      throw err;
+    }
+
+    const result = await prisma.transcriptSegment.updateMany({
+      where: { meetingId: meeting.id, speakerName: from },
+      data: { speakerName: to },
+    });
+    await writeAudit(req.auth!.workspaceId, req.auth!.userId, "speaker_renamed", {
+      meetingId: meeting.id,
+      from,
+      to,
+      updated: result.count,
+    });
+    res.json({ ok: true, from, to, updated: result.count });
   })
 );
 
@@ -171,14 +381,24 @@ router.post(
       text: s.text,
     }));
 
-    const [summary, items] = await Promise.all([
-      generateMeetingSummary(
-        meeting.title,
-        transcript,
-        vocab.map((v) => v.term)
-      ),
-      extractActionItems(transcript),
-    ]);
+    let summary;
+    let items;
+    try {
+      [summary, items] = await Promise.all([
+        generateMeetingSummary(
+          meeting.title,
+          transcript,
+          vocab.map((v) => v.term),
+          { demoMode: meeting.demoMode }
+        ),
+        extractActionItems(transcript, { demoMode: meeting.demoMode }),
+      ]);
+    } catch (err) {
+      await prisma.meeting
+        .update({ where: { id: meeting.id }, data: { status: "FAILED" } })
+        .catch(() => null);
+      throw err;
+    }
 
     await prisma.$transaction(async (tx) => {
       await tx.meetingSummary.upsert({
@@ -224,6 +444,43 @@ router.post(
   })
 );
 
+/**
+ * Save an edited summary from the finalization review screen. Upserts the
+ * summary so the host can correct AI/mock output before saving the meeting.
+ */
+router.put(
+  "/:id/summary",
+  asyncHandler(async (req, res) => {
+    const meeting = await prisma.meeting.findFirst({
+      where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
+      select: { id: true },
+    });
+    if (!meeting) throw notFound("Meeting not found");
+
+    const body = req.body as {
+      overview?: string;
+      keyPoints?: string[];
+      decisions?: string[];
+      followUpEmail?: string;
+    };
+    const overview = (body.overview ?? "").toString();
+    const keyPoints = Array.isArray(body.keyPoints)
+      ? body.keyPoints.map((k) => String(k)).filter(Boolean)
+      : [];
+    const decisions = Array.isArray(body.decisions)
+      ? body.decisions.map((d) => String(d)).filter(Boolean)
+      : [];
+    const followUpEmail = (body.followUpEmail ?? "").toString();
+
+    const summary = await prisma.meetingSummary.upsert({
+      where: { meetingId: meeting.id },
+      create: { meetingId: meeting.id, overview, keyPoints, decisions, followUpEmail },
+      update: { overview, keyPoints, decisions, followUpEmail },
+    });
+    res.json({ summary: serializeSummary(summary) });
+  })
+);
+
 /* ----------------------------- Transcripts ----------------------------- */
 
 router.get(
@@ -258,6 +515,161 @@ router.post(
   })
 );
 
+/**
+ * Update a single transcript segment: edit text, highlight it, or mark it as a
+ * decision / action item. Used by the transcript segment actions UI on both the
+ * live page and meeting detail.
+ */
+router.patch(
+  "/:id/transcript/:segmentId",
+  asyncHandler(async (req, res) => {
+    const meeting = await prisma.meeting.findFirst({
+      where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
+      select: { id: true },
+    });
+    if (!meeting) throw notFound("Meeting not found");
+
+    let update;
+    try {
+      update = buildSegmentUpdate(req.body ?? {});
+    } catch (err) {
+      if (err instanceof SegmentPatchError) throw badRequest(err.message);
+      throw err;
+    }
+
+    const result = await prisma.transcriptSegment.updateMany({
+      where: { id: req.params.segmentId, meetingId: meeting.id },
+      data: update,
+    });
+    if (result.count === 0) throw notFound("Transcript segment not found");
+
+    const segment = await prisma.transcriptSegment.findUnique({
+      where: { id: req.params.segmentId },
+    });
+    res.json({ segment: serializeSegment(segment!) });
+  })
+);
+
+router.get(
+  "/:id/private-suggestions",
+  asyncHandler(async (req, res) => {
+    const meeting = await prisma.meeting.findFirst({
+      where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
+      select: { id: true },
+    });
+    if (!meeting) throw notFound("Meeting not found");
+
+    const suggestions = await prisma.privateAssistSuggestion.findMany({
+      where: {
+        meetingId: meeting.id,
+        userId: req.auth!.userId,
+        question: { not: "Private note" },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json({
+      suggestions: suggestions.map(serializePrivateAssistSuggestion),
+    });
+  })
+);
+
+router.get(
+  "/:id/private-notes",
+  asyncHandler(async (req, res) => {
+    const meeting = await prisma.meeting.findFirst({
+      where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
+      select: { id: true },
+    });
+    if (!meeting) throw notFound("Meeting not found");
+    const notes = await prisma.privateAssistSuggestion.findMany({
+      where: {
+        meetingId: meeting.id,
+        userId: req.auth!.userId,
+        question: "Private note",
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    res.json({ notes: notes.map(serializePrivateAssistSuggestion) });
+  })
+);
+
+router.post(
+  "/:id/private-notes",
+  asyncHandler(async (req, res) => {
+    const text = (req.body?.text as string)?.trim();
+    if (!text) throw badRequest("text is required");
+    const meeting = await prisma.meeting.findFirst({
+      where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
+      select: { id: true },
+    });
+    if (!meeting) throw notFound("Meeting not found");
+    const note = await prisma.privateAssistSuggestion.create({
+      data: {
+        meetingId: meeting.id,
+        userId: req.auth!.userId,
+        question: "Private note",
+        suggestion: text,
+      },
+    });
+    res.status(201).json({ note: serializePrivateAssistSuggestion(note) });
+  })
+);
+
+router.post(
+  "/:id/action-items",
+  asyncHandler(async (req, res) => {
+    const task = (req.body?.task as string)?.trim();
+    if (!task) throw badRequest("task is required");
+    const meeting = await prisma.meeting.findFirst({
+      where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
+      select: { id: true },
+    });
+    if (!meeting) throw notFound("Meeting not found");
+    const item = await prisma.actionItem.create({
+      data: {
+        meetingId: meeting.id,
+        task,
+        assigneeName: (req.body?.assigneeName as string | undefined) ?? null,
+        priority: "MEDIUM",
+        sourceText: (req.body?.sourceText as string | undefined) ?? task,
+      },
+      include: { meeting: { select: { title: true } } },
+    });
+    res.status(201).json({ actionItem: serializeActionItem(item) });
+  })
+);
+
+/** Audit activity scoped to a single meeting (host/workspace only). */
+router.get(
+  "/:id/audit",
+  asyncHandler(async (req, res) => {
+    const meeting = await prisma.meeting.findFirst({
+      where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
+      select: { id: true },
+    });
+    if (!meeting) throw notFound("Meeting not found");
+    const logs = await prisma.auditLog.findMany({
+      where: { workspaceId: req.auth!.workspaceId },
+      orderBy: { createdAt: "desc" },
+      take: 300,
+    });
+    const scoped = logs
+      .filter(
+        (l) =>
+          (l.metadata as { meetingId?: string } | null)?.meetingId ===
+          meeting.id
+      )
+      .slice(0, 50)
+      .map((l) => ({
+        id: l.id,
+        action: l.action,
+        metadata: l.metadata,
+        createdAt: l.createdAt.toISOString(),
+      }));
+    res.json({ logs: scoped });
+  })
+);
+
 /* ----------------------------- Sharing ----------------------------- */
 
 router.post(
@@ -276,6 +688,34 @@ router.post(
       data: { shared: enable, shareId: enable ? shareId : existing.shareId },
     });
     res.json({ shared: enable, shareId: enable ? shareId : null });
+  })
+);
+
+router.get(
+  "/:id/export",
+  asyncHandler(async (req, res) => {
+    const format = ((req.query.format as string) ?? "txt").toLowerCase() as ExportFormat;
+    if (!["pdf", "docx", "txt", "srt", "vtt", "json"].includes(format)) {
+      throw badRequest("Unsupported export format");
+    }
+    const meeting = await prisma.meeting.findFirst({
+      where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
+      include: {
+        summary: true,
+        segments: { orderBy: { startTime: "asc" } },
+        actionItems: true,
+      },
+    });
+    if (!meeting) throw notFound("Meeting not found");
+    const result = exportMeeting(meeting, format);
+    await writeAudit(req.auth!.workspaceId, req.auth!.userId, "transcript_exported", {
+      meetingId: meeting.id,
+      format,
+    });
+    const headers = exportResponseHeaders(meeting.title, result);
+    res.setHeader("Content-Type", headers["Content-Type"]);
+    res.setHeader("Content-Disposition", headers["Content-Disposition"]);
+    res.send(result.buffer);
   })
 );
 

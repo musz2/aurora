@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { env, hasOpenAI } from "../config/env.js";
+import { HttpError } from "../utils/http.js";
 
 const client = hasOpenAI ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
 
@@ -25,16 +26,32 @@ export interface TranscriptLine {
   text: string;
 }
 
+interface AiGenerationOptions {
+  demoMode?: boolean;
+  featureName?: string;
+}
+
 function transcriptToText(transcript: TranscriptLine[]): string {
   return transcript.map((t) => `${t.speakerName}: ${t.text}`).join("\n");
+}
+
+function aiNotConfigured(featureName = "AI generation") {
+  return new HttpError(
+    503,
+    `${featureName} is not configured. Set OPENAI_API_KEY on the server to use this for real meetings. Demo mode can still use sample output.`
+  );
 }
 
 async function chatJSON<T>(
   system: string,
   user: string,
-  fallback: T
+  fallback: T,
+  options: AiGenerationOptions = {}
 ): Promise<T> {
-  if (!client) return fallback;
+  if (!client) {
+    if (options.demoMode) return fallback;
+    throw aiNotConfigured(options.featureName);
+  }
   try {
     const res = await client.chat.completions.create({
       model: MODEL,
@@ -45,26 +62,33 @@ async function chatJSON<T>(
       ],
     });
     const content = res.choices[0]?.message?.content;
-    if (!content) return fallback;
+    if (!content) throw new Error("OpenAI returned an empty response");
     return JSON.parse(content) as T;
   } catch (err) {
-    console.warn("[ai] falling back to mock:", (err as Error).message);
-    return fallback;
+    if (options.demoMode) {
+      console.warn("[ai] demo fallback:", (err as Error).message);
+      return fallback;
+    }
+    throw new HttpError(502, "AI generation failed. No mock output was saved.");
   }
 }
 
 /* -------------------------------------------------------------------------- */
-/* Public API — always returns useful data, even with no API key.             */
+/* Public API — mock output is allowed only for explicitly marked demo data.  */
 /* -------------------------------------------------------------------------- */
 
 export async function generateMeetingSummary(
   title: string,
   transcript: TranscriptLine[],
-  vocabulary: string[] = []
+  vocabulary: string[] = [],
+  options: AiGenerationOptions = {}
 ): Promise<SummaryResult> {
   const text = transcriptToText(transcript);
   const fallback = mockSummary(title, transcript);
-  if (!client || text.trim().length === 0) return fallback;
+  if (text.trim().length === 0) {
+    if (options.demoMode) return fallback;
+    throw new HttpError(400, "Cannot generate a summary without transcript text.");
+  }
 
   return chatJSON<SummaryResult>(
     `You are Aurora, an expert meeting analyst. Produce a concise, professional meeting summary as JSON with keys:
@@ -74,21 +98,27 @@ export async function generateMeetingSummary(
 "followUpEmail" (string, a ready-to-send follow up email).
 ${vocabulary.length ? `Domain vocabulary to spell correctly: ${vocabulary.join(", ")}.` : ""}`,
     `Meeting title: ${title}\n\nTranscript:\n${text}`,
-    fallback
+    fallback,
+    { ...options, featureName: options.featureName ?? "Meeting summary" }
   );
 }
 
 export async function extractActionItems(
-  transcript: TranscriptLine[]
+  transcript: TranscriptLine[],
+  options: AiGenerationOptions = {}
 ): Promise<ExtractedActionItem[]> {
   const text = transcriptToText(transcript);
   const fallback = mockActionItems(transcript);
-  if (!client || text.trim().length === 0) return fallback;
+  if (text.trim().length === 0) {
+    if (options.demoMode) return fallback;
+    throw new HttpError(400, "Cannot extract action items without transcript text.");
+  }
 
   const result = await chatJSON<{ items: ExtractedActionItem[] }>(
     `You are Aurora. Extract action items from the transcript as JSON: { "items": [{ "assigneeName": string|null, "task": string, "dueDate": string|null (ISO date), "priority": "LOW"|"MEDIUM"|"HIGH", "sourceText": string }] }. Only include real, actionable tasks.`,
     `Transcript:\n${text}`,
-    { items: fallback }
+    { items: fallback },
+    { ...options, featureName: options.featureName ?? "Action item extraction" }
   );
   return result.items ?? fallback;
 }
@@ -96,9 +126,13 @@ export async function extractActionItems(
 export async function generateFollowUpEmail(
   title: string,
   summary: SummaryResult,
-  actionItems: ExtractedActionItem[]
+  actionItems: ExtractedActionItem[],
+  options: AiGenerationOptions = {}
 ): Promise<string> {
-  if (!client) return mockFollowUpEmail(title, summary, actionItems);
+  if (!client) {
+    if (options.demoMode) return mockFollowUpEmail(title, summary, actionItems);
+    throw aiNotConfigured(options.featureName ?? "Follow-up email generation");
+  }
   try {
     const res = await client.chat.completions.create({
       model: MODEL,
@@ -116,12 +150,15 @@ export async function generateFollowUpEmail(
         },
       ],
     });
-    return (
-      res.choices[0]?.message?.content ??
-      mockFollowUpEmail(title, summary, actionItems)
-    );
-  } catch {
-    return mockFollowUpEmail(title, summary, actionItems);
+    const email = res.choices[0]?.message?.content;
+    if (!email) throw new Error("OpenAI returned an empty response");
+    return email;
+  } catch (err) {
+    if (options.demoMode) {
+      console.warn("[ai] demo fallback:", (err as Error).message);
+      return mockFollowUpEmail(title, summary, actionItems);
+    }
+    throw new HttpError(502, "AI generation failed. No mock output was saved.");
   }
 }
 
@@ -142,7 +179,8 @@ export async function answerMeetingQuestion(
   contexts: MeetingContext[]
 ): Promise<ChatAnswer> {
   const fallback = mockChatAnswer(question, contexts);
-  if (!client || contexts.length === 0) return fallback;
+  if (contexts.length === 0) return fallback;
+  if (!client) throw aiNotConfigured("Meeting chat");
   try {
     const corpus = contexts
       .map(
@@ -168,7 +206,7 @@ export async function answerMeetingQuestion(
       citations: fallback.citations,
     };
   } catch {
-    return fallback;
+    throw new HttpError(502, "AI generation failed. No mock output was saved.");
   }
 }
 
@@ -176,7 +214,7 @@ export async function generateLiveSuggestion(
   question: string,
   transcriptContext: string
 ): Promise<string> {
-  if (!client) return mockLiveSuggestion(question);
+  if (!client) throw aiNotConfigured("Live private assistant");
   try {
     const res = await client.chat.completions.create({
       model: MODEL,
@@ -192,14 +230,16 @@ export async function generateLiveSuggestion(
         },
       ],
     });
-    return res.choices[0]?.message?.content ?? mockLiveSuggestion(question);
+    const suggestion = res.choices[0]?.message?.content;
+    if (!suggestion) throw new Error("OpenAI returned an empty response");
+    return suggestion;
   } catch {
-    return mockLiveSuggestion(question);
+    throw new HttpError(502, "AI generation failed. No mock output was saved.");
   }
 }
 
 /* -------------------------------------------------------------------------- */
-/* Mock generators (used when OPENAI_API_KEY is absent or on error)            */
+/* Mock generators (demo mode only)                                           */
 /* -------------------------------------------------------------------------- */
 
 function mockSummary(title: string, transcript: TranscriptLine[]): SummaryResult {

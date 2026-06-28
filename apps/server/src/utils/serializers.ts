@@ -2,6 +2,7 @@ import type {
   ActionItem,
   Meeting,
   MeetingSummary,
+  PrivateAssistSuggestion,
   TranscriptSegment,
 } from "@prisma/client";
 
@@ -13,6 +14,10 @@ export const serializeSegment = (s: TranscriptSegment) => ({
   startTime: s.startTime,
   endTime: s.endTime,
   confidence: s.confidence,
+  edited: s.edited,
+  highlighted: s.highlighted,
+  isDecision: s.isDecision,
+  isActionItem: s.isActionItem,
   createdAt: s.createdAt.toISOString(),
 });
 
@@ -42,6 +47,15 @@ export const serializeActionItem = (
   updatedAt: a.updatedAt.toISOString(),
 });
 
+export const serializePrivateAssistSuggestion = (s: PrivateAssistSuggestion) => ({
+  id: s.id,
+  meetingId: s.meetingId,
+  userId: s.userId,
+  question: s.question,
+  suggestion: s.suggestion,
+  createdAt: s.createdAt.toISOString(),
+});
+
 type MeetingWithRelations = Meeting & {
   summary?: MeetingSummary | null;
   segments?: TranscriptSegment[];
@@ -64,6 +78,7 @@ export const serializeMeeting = (m: MeetingWithRelations) => ({
   shared: m.shared,
   shareId: m.shareId,
   publishedNotes: m.publishedNotes,
+  demoMode: m.demoMode,
   createdById: m.createdById,
   createdAt: m.createdAt.toISOString(),
   updatedAt: m.updatedAt.toISOString(),

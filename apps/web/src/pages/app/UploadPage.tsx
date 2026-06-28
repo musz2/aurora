@@ -18,6 +18,7 @@ export function UploadPage() {
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
   const [drag, setDrag] = useState(false);
+  const [demoMode, setDemoMode] = useState(false);
 
   const upload = async (file: File) => {
     setFileName(file.name);
@@ -25,6 +26,7 @@ export function UploadPage() {
     setPhase("uploading");
     const form = new FormData();
     form.append("file", file);
+    form.append("mode", demoMode ? "demo" : "real");
     const isVideo = file.name.toLowerCase().endsWith(".mp4");
     try {
       setPhase("processing");
@@ -89,6 +91,15 @@ export function UploadPage() {
               >
                 Choose file
               </Button>
+              <label className="mt-4 flex items-center gap-2 rounded-xl border border-black/10 px-3 py-2 text-sm text-ink">
+                <input
+                  type="checkbox"
+                  checked={demoMode}
+                  onChange={(e) => setDemoMode(e.target.checked)}
+                  className="h-4 w-4 accent-aurora-600"
+                />
+                Demo sample transcription
+              </label>
               <input
                 ref={inputRef}
                 type="file"

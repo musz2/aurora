@@ -1,28 +1,29 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import axios from "axios";
-import { Radio, CheckCircle2, StickyNote, AlertCircle } from "lucide-react";
+import {
+  Radio,
+  CheckCircle2,
+  StickyNote,
+  AlertCircle,
+  Eye,
+  ShieldCheck,
+  ListChecks,
+} from "lucide-react";
 import { Logo } from "@/components/ui/Logo";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { Avatar, Spinner } from "@/components/ui/primitives";
 import { TranscriptPanel } from "@/components/app/TranscriptPanel";
+import { formatDate } from "@/lib/format";
+import type { PublicSessionDto } from "@aurora/shared";
 
-interface Session {
-  id: string;
-  title: string;
-  status: string;
-  live: boolean;
-  ended: boolean;
-  participants: string[];
-  publishedNotes: string[];
-  segments: { id: string; speakerName: string; text: string; startTime: number }[];
-  summary: { overview: string; keyPoints: string[]; decisions: string[] } | null;
-}
+type Session = PublicSessionDto;
+type Status = "loading" | "ok" | "notfound" | "error";
 
 export function ViewerPage() {
   const { shareId } = useParams();
   const [session, setSession] = useState<Session | null>(null);
-  const [status, setStatus] = useState<"loading" | "ok" | "notfound">("loading");
+  const [status, setStatus] = useState<Status>("loading");
 
   useEffect(() => {
     let alive = true;
@@ -32,8 +33,14 @@ export function ViewerPage() {
         if (!alive) return;
         setSession(data.session);
         setStatus("ok");
-      } catch {
-        if (alive) setStatus("notfound");
+      } catch (err) {
+        if (!alive) return;
+        // 404 → invalid/expired link; anything else → transient error.
+        if (axios.isAxiosError(err) && err.response?.status === 404) {
+          setStatus("notfound");
+        } else {
+          setStatus((prev) => (prev === "ok" ? "ok" : "error"));
+        }
       }
     };
     load();
@@ -47,13 +54,21 @@ export function ViewerPage() {
 
   return (
     <div className="min-h-screen bg-[#FAFAFB]">
-      <header className="flex items-center justify-between border-b border-black/[0.06] bg-white px-6 py-4">
+      <header className="sticky top-0 z-10 flex items-center justify-between border-b border-black/[0.06] bg-white/90 px-6 py-4 backdrop-blur">
         <Logo />
-        {session && (
-          <StatusPill tone={session.live ? "live" : session.ended ? "muted" : "processing"} pulse={session.live}>
-            {session.live ? "Live now" : session.ended ? "Session ended" : "Processing"}
-          </StatusPill>
-        )}
+        <div className="flex items-center gap-2">
+          <span className="hidden items-center gap-1.5 rounded-full bg-black/[0.04] px-3 py-1 text-xs font-medium text-muted sm:inline-flex">
+            <Eye className="h-3.5 w-3.5" /> Shared read-only view
+          </span>
+          {session && (
+            <StatusPill
+              tone={session.live ? "live" : session.ended ? "muted" : "processing"}
+              pulse={session.live}
+            >
+              {session.live ? "Live now" : session.ended ? "Session ended" : "Processing"}
+            </StatusPill>
+          )}
+        </div>
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6">
@@ -63,29 +78,39 @@ export function ViewerPage() {
           </div>
         )}
 
+        {status === "error" && (
+          <StateCard
+            icon={AlertCircle}
+            iconClass="text-amber-500"
+            title="Can’t reach this session"
+            body="We couldn’t load the shared session. It may be a temporary network issue — this page will keep retrying."
+          />
+        )}
+
         {status === "notfound" && (
-          <div className="mx-auto max-w-md rounded-2xl border border-black/[0.06] bg-white p-10 text-center">
-            <AlertCircle className="mx-auto h-10 w-10 text-amber-500" />
-            <h1 className="mt-4 font-display text-2xl text-ink">
-              Session not available
-            </h1>
-            <p className="mt-2 text-sm text-muted">
-              This session link is invalid, private, or no longer shared.
-            </p>
-            <Link
-              to="/"
-              className="mt-5 inline-block text-sm font-medium text-aurora-600"
-            >
-              ← Back to Aurora
-            </Link>
-          </div>
+          <StateCard
+            icon={AlertCircle}
+            iconClass="text-amber-500"
+            title="Session link invalid or expired"
+            body="This session link is invalid, private, or no longer shared by the host."
+          />
         )}
 
         {status === "ok" && session && (
           <div>
             <div className="mb-6">
               <h1 className="font-display text-3xl text-ink">{session.title}</h1>
-              <div className="mt-2 flex flex-wrap items-center gap-2">
+              <p className="mt-1.5 inline-flex items-center gap-1.5 text-sm text-muted">
+                <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                Shared read-only view. Private assistant output, host notes, and
+                controls are never visible here.
+              </p>
+              {(session.startedAt || session.endedAt) && (
+                <p className="mt-1 text-xs text-muted">
+                  {session.startedAt ? formatDate(session.startedAt) : ""}
+                </p>
+              )}
+              <div className="mt-3 flex flex-wrap items-center gap-2">
                 {session.participants.map((p) => (
                   <span
                     key={p}
@@ -126,46 +151,100 @@ export function ViewerPage() {
               </div>
 
               <div className="space-y-4">
+                {session.summary && (
+                  <ViewerCard icon={CheckCircle2} iconClass="text-emerald-600" title="Summary">
+                    <p className="text-sm leading-relaxed text-ink/80">
+                      {session.summary.overview}
+                    </p>
+                    {session.summary.decisions.length > 0 && (
+                      <>
+                        <p className="mt-3 flex items-center gap-1.5 text-xs font-semibold text-emerald-700">
+                          <ListChecks className="h-3.5 w-3.5" /> Decisions
+                        </p>
+                        <ul className="mt-1.5 space-y-1">
+                          {session.summary.decisions.map((d, i) => (
+                            <li key={i} className="text-sm text-ink/80">
+                              • {d}
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
+                  </ViewerCard>
+                )}
+
                 {session.publishedNotes.length > 0 && (
-                  <div className="rounded-2xl border border-black/[0.06] bg-white p-5">
-                    <div className="flex items-center gap-2">
-                      <StickyNote className="h-4 w-4 text-aurora-600" />
-                      <span className="text-sm font-medium text-ink">
-                        Published notes
-                      </span>
-                    </div>
-                    <ul className="mt-3 space-y-2">
+                  <ViewerCard icon={StickyNote} iconClass="text-aurora-600" title="Published notes">
+                    <ul className="space-y-2">
                       {session.publishedNotes.map((n, i) => (
                         <li key={i} className="text-sm text-ink/80">
                           • {n}
                         </li>
                       ))}
                     </ul>
-                  </div>
-                )}
-
-                {session.summary && (
-                  <div className="rounded-2xl border border-black/[0.06] bg-white p-5">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                      <span className="text-sm font-medium text-ink">Summary</span>
-                    </div>
-                    <p className="mt-2 text-sm text-ink/80">
-                      {session.summary.overview}
-                    </p>
-                  </div>
+                  </ViewerCard>
                 )}
 
                 {!session.summary && session.publishedNotes.length === 0 && (
                   <div className="rounded-2xl border border-dashed border-black/10 bg-white p-6 text-center text-sm text-muted">
-                    The host hasn't published any notes yet.
+                    The host hasn’t published a summary or notes yet.
                   </div>
                 )}
+
+                <p className="rounded-xl bg-black/[0.03] px-4 py-3 text-xs leading-relaxed text-muted">
+                  This is a public read-only view. Private notes and Aurora’s
+                  private assistant are never shared here.
+                </p>
               </div>
             </div>
           </div>
         )}
       </main>
+    </div>
+  );
+}
+
+function StateCard({
+  icon: Icon,
+  iconClass,
+  title,
+  body,
+}: {
+  icon: React.ElementType;
+  iconClass: string;
+  title: string;
+  body: string;
+}) {
+  return (
+    <div className="mx-auto max-w-md rounded-2xl border border-black/[0.06] bg-white p-10 text-center">
+      <Icon className={`mx-auto h-10 w-10 ${iconClass}`} />
+      <h1 className="mt-4 font-display text-2xl text-ink">{title}</h1>
+      <p className="mt-2 text-sm text-muted">{body}</p>
+      <Link to="/" className="mt-5 inline-block text-sm font-medium text-aurora-600">
+        ← Back to Aurora
+      </Link>
+    </div>
+  );
+}
+
+function ViewerCard({
+  icon: Icon,
+  iconClass,
+  title,
+  children,
+}: {
+  icon: React.ElementType;
+  iconClass: string;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-black/[0.06] bg-white p-5">
+      <div className="flex items-center gap-2">
+        <Icon className={`h-4 w-4 ${iconClass}`} />
+        <span className="text-sm font-medium text-ink">{title}</span>
+      </div>
+      <div className="mt-2.5">{children}</div>
     </div>
   );
 }

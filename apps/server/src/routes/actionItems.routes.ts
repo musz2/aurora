@@ -74,7 +74,8 @@ router.post(
     });
     if (!meeting) throw notFound("Meeting not found");
     const items = await extractActionItems(
-      meeting.segments.map((s) => ({ speakerName: s.speakerName, text: s.text }))
+      meeting.segments.map((s) => ({ speakerName: s.speakerName, text: s.text })),
+      { demoMode: meeting.demoMode }
     );
     const created = await prisma.$transaction(
       items.map((item) =>

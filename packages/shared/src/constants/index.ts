@@ -50,14 +50,35 @@ export type IntegrationProvider = (typeof INTEGRATION_PROVIDERS)[number];
 
 export const SUPPORTED_UPLOAD_FORMATS = ["mp3", "wav", "m4a", "mp4"] as const;
 
+/**
+ * Live session lifecycle states. These are the ephemeral, client-facing states
+ * a recording moves through during a session. They are richer than the persisted
+ * Prisma `MeetingStatus`; see `lifecycleToStatus` on the server for the mapping.
+ */
+export const MEETING_LIFECYCLE_STATES = [
+  "not_recording",
+  "requesting_permission",
+  "recording",
+  "paused",
+  "reconnecting",
+  "failed",
+  "stopped",
+  "finalizing",
+  "completed",
+] as const;
+export type MeetingLifecycleState = (typeof MEETING_LIFECYCLE_STATES)[number];
+
 export const SOCKET_EVENTS = {
   // client -> server
   MEETING_START: "meeting:start",
+  MEETING_PAUSE: "meeting:pause",
+  MEETING_RESUME: "meeting:resume",
   MEETING_STOP: "meeting:stop",
   TRANSCRIPT_AUDIO_CHUNK: "transcript:audio-chunk",
   AI_ASK_LIVE: "ai:ask-live",
   // server -> client
   MEETING_STATUS: "meeting:status",
+  MEETING_LIFECYCLE: "meeting:lifecycle",
   TRANSCRIPT_SEGMENT: "transcript:segment",
   TRANSCRIPT_PARTIAL: "transcript:partial",
   TRANSCRIPT_ERROR: "transcript:error",

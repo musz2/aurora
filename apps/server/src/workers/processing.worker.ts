@@ -24,8 +24,10 @@ export async function processMeeting(meetingId: string): Promise<void> {
     text: s.text,
   }));
   const [summary, items] = await Promise.all([
-    generateMeetingSummary(meeting.title, lines),
-    extractActionItems(lines),
+    generateMeetingSummary(meeting.title, lines, [], {
+      demoMode: meeting.demoMode,
+    }),
+    extractActionItems(lines, { demoMode: meeting.demoMode }),
   ]);
 
   await prisma.meetingSummary.upsert({

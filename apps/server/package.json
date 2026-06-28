@@ -7,6 +7,7 @@
     "build": "tsup",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test $(find src -name '*.test.ts')",
     "lint": "echo \"no lint\"",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev --name init",

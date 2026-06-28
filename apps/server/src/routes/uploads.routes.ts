@@ -11,8 +11,9 @@ import {
   extractActionItems,
   generateMeetingSummary,
 } from "../services/ai.service.js";
-import { TranscriptSimulator } from "../services/transcript.simulator.js";
+import { env } from "../config/env.js";
 import { trackUsage } from "../services/usage.service.js";
+import { createUploadedTranscriptionProvider } from "../services/uploaded-transcription.provider.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -32,10 +33,17 @@ const ALLOWED = [".mp3", ".wav", ".m4a", ".mp4"];
 async function processUpload(
   workspaceId: string,
   userId: string,
+  filePath: string,
+  mimeType: string,
   filename: string,
-  originalName: string
+  originalName: string,
+  demoMode: boolean
 ) {
-  // Create the meeting, generate a simulated transcript, then summarize.
+  const provider = createUploadedTranscriptionProvider(
+    demoMode ? "demo" : "real",
+    env.UPLOAD_TRANSCRIPTION_PROVIDER
+  );
+
   const meeting = await prisma.meeting.create({
     data: {
       workspaceId,
@@ -45,59 +53,76 @@ async function processUpload(
       status: "PROCESSING",
       recordingUrl: storage.publicUrl(filename),
       startedAt: new Date(),
+      demoMode,
     },
   });
 
-  const sim = new TranscriptSimulator();
-  const lines: { speakerName: string; text: string }[] = [];
-  while (sim.hasMore()) {
-    const seg = sim.next();
-    lines.push({ speakerName: seg.speakerName, text: seg.text });
-    await prisma.transcriptSegment.create({
+  try {
+    const transcription = await provider.transcribe({
+      filePath,
+      mimeType,
+      originalName,
+    });
+    const lines = transcription.segments.map((seg) => ({
+      speakerName: seg.speakerName,
+      text: seg.text,
+    }));
+
+    for (const seg of transcription.segments) {
+      await prisma.transcriptSegment.create({
+        data: {
+          meetingId: meeting.id,
+          speakerName: seg.speakerName,
+          text: seg.text,
+          startTime: seg.startTime,
+          endTime: seg.endTime,
+          confidence: seg.confidence,
+        },
+      });
+    }
+
+    const [summary, items] = await Promise.all([
+      generateMeetingSummary(meeting.title, lines, [], { demoMode: false }),
+      extractActionItems(lines, { demoMode: false }),
+    ]);
+
+    await prisma.meetingSummary.create({
       data: {
         meetingId: meeting.id,
-        speakerName: seg.speakerName,
-        text: seg.text,
-        startTime: seg.startTime,
-        endTime: seg.endTime,
-        confidence: seg.confidence,
+        overview: summary.overview,
+        keyPoints: summary.keyPoints,
+        decisions: summary.decisions,
+        followUpEmail: summary.followUpEmail,
       },
     });
-  }
+    for (const item of items) {
+      await prisma.actionItem.create({
+        data: {
+          meetingId: meeting.id,
+          assigneeName: item.assigneeName,
+          task: item.task,
+          dueDate: item.dueDate ? new Date(item.dueDate) : null,
+          priority: item.priority,
+          sourceText: item.sourceText,
+        },
+      });
+    }
 
-  const [summary, items] = await Promise.all([
-    generateMeetingSummary(meeting.title, lines),
-    extractActionItems(lines),
-  ]);
-
-  await prisma.meetingSummary.create({
-    data: {
-      meetingId: meeting.id,
-      overview: summary.overview,
-      keyPoints: summary.keyPoints,
-      decisions: summary.decisions,
-      followUpEmail: summary.followUpEmail,
-    },
-  });
-  for (const item of items) {
-    await prisma.actionItem.create({
-      data: {
-        meetingId: meeting.id,
-        assigneeName: item.assigneeName,
-        task: item.task,
-        dueDate: item.dueDate ? new Date(item.dueDate) : null,
-        priority: item.priority,
-        sourceText: item.sourceText,
-      },
+    const duration = transcription.durationSeconds;
+    await prisma.meeting.update({
+      where: { id: meeting.id },
+      data: { status: "COMPLETED", endedAt: new Date(), duration },
     });
+    await trackUsage(workspaceId, userId, meeting.id, Math.max(1, Math.ceil(duration / 60)));
+  } catch (err) {
+    await prisma.meeting
+      .update({
+        where: { id: meeting.id },
+        data: { status: "FAILED", endedAt: new Date() },
+      })
+      .catch(() => null);
+    throw err;
   }
-
-  const duration = 600;
-  await prisma.meeting.update({
-    where: { id: meeting.id },
-    data: { status: "COMPLETED", endedAt: new Date(), duration },
-  });
-  await trackUsage(workspaceId, userId, meeting.id, 10);
 
   return prisma.meeting.findUnique({
     where: { id: meeting.id },
@@ -115,11 +140,15 @@ const handler = asyncHandler(async (req, res) => {
   if (!ALLOWED.includes(ext)) {
     throw badRequest(`Unsupported format. Allowed: ${ALLOWED.join(", ")}`);
   }
+  const demoMode = req.body?.mode === "demo";
   const meeting = await processUpload(
     req.auth!.workspaceId,
     req.auth!.userId,
+    req.file.path,
+    req.file.mimetype,
     req.file.filename,
-    req.file.originalname
+    req.file.originalname,
+    demoMode
   );
   res.status(201).json({ meeting: serializeMeeting(meeting!) });
 });

@@ -10,6 +10,12 @@ import {
   type LiveSttConnection,
 } from "../services/deepgram.service.js";
 import { hasDeepgram, hasOpenAI } from "../config/env.js";
+import {
+  detectQuestions,
+  generateMockPrivateSuggestion,
+  normalizeAssistantMode,
+  type AssistantMode,
+} from "../services/private-assistant.service.js";
 
 interface ClientMessage {
   type: string;
@@ -31,6 +37,8 @@ interface Session {
   // interim accumulation for diarized real STT
   interimSpeaker: string;
   stopped: boolean;
+  paused: boolean;
+  assistantMode: AssistantMode;
 }
 
 function send(ws: WebSocket, type: string, payload: unknown) {
@@ -69,7 +77,16 @@ export function attachSocketServer(server: Server) {
       startTime: Date.now(),
       interimSpeaker: "Speaker 1",
       stopped: false,
+      paused: false,
+      assistantMode: "Technical Meeting",
     };
+
+    const sendLifecycle = (state: string, extra?: Record<string, unknown>) =>
+      send(ws, SOCKET_EVENTS.MEETING_LIFECYCLE, {
+        meetingId: session.meetingId,
+        state,
+        ...extra,
+      });
 
     const clearTimers = () => {
       if (session.wordTimer) clearTimeout(session.wordTimer);
@@ -101,6 +118,71 @@ export function attachSocketServer(server: Server) {
         /* meeting may be ad-hoc */
       }
       return id;
+    };
+
+    const recentContext = async () => {
+      const recent = await prisma.transcriptSegment
+        .findMany({
+          where: { meetingId: session.meetingId },
+          orderBy: { startTime: "desc" },
+          take: 6,
+        })
+        .catch(() => []);
+      return recent
+        .reverse()
+        .map((s) => `${s.speakerName}: ${s.text}`)
+        .join("\n");
+    };
+
+    const sendPrivateSuggestion = async (question: string, suggestion: string, configured: boolean) => {
+      if (session.meetingId) {
+        await prisma.privateAssistSuggestion
+          .create({
+            data: {
+              meetingId: session.meetingId,
+              userId: auth!.userId,
+              question,
+              suggestion,
+            },
+          })
+          .catch(() => null);
+      }
+      send(ws, SOCKET_EVENTS.AI_SUGGESTION, {
+        question,
+        configured,
+        mode: session.assistantMode,
+        private: true,
+        suggestion,
+      });
+    };
+
+    const maybeSuggestFromTranscript = async (text: string) => {
+      const questions = detectQuestions(text);
+      if (questions.length === 0) return;
+      const ctx = await recentContext();
+      for (const q of questions.slice(0, 2)) {
+        if (session.mode === "demo" || !hasOpenAI) {
+          await sendPrivateSuggestion(
+            q.question,
+            generateMockPrivateSuggestion({
+              mode: session.assistantMode,
+              question: q.question,
+              transcriptContext: ctx,
+            }),
+            false
+          );
+        } else {
+          try {
+            await sendPrivateSuggestion(
+              q.question,
+              await generateLiveSuggestion(q.question, ctx),
+              true
+            );
+          } catch {
+            /* keep transcription flowing even if assistant fails */
+          }
+        }
+      }
     };
 
     /* ---------------------- REAL: Deepgram live STT ---------------------- */
@@ -164,7 +246,7 @@ export function attachSocketServer(server: Server) {
             message,
           }),
         onTranscript: async (e) => {
-          if (session.stopped) return;
+          if (session.stopped || session.paused) return;
           session.dgEvents += 1;
           const speaker = e.speaker ?? session.interimSpeaker;
           session.interimSpeaker = speaker;
@@ -180,6 +262,7 @@ export function attachSocketServer(server: Server) {
               endTime: relStart,
               isFinal: true,
             });
+            await maybeSuggestFromTranscript(e.text);
             send(ws, SOCKET_EVENTS.MEETING_STATUS, {
               meetingId,
               status: "RECORDING",
@@ -204,7 +287,7 @@ export function attachSocketServer(server: Server) {
     /* -------------------------- DEMO: simulator -------------------------- */
 
     const speakUtterance = () => {
-      if (session.stopped) return;
+      if (session.stopped || session.paused) return;
       if (!session.simulator.hasMore()) {
         send(ws, SOCKET_EVENTS.MEETING_STATUS, {
           meetingId: session.meetingId,
@@ -222,7 +305,7 @@ export function attachSocketServer(server: Server) {
         state: "listening",
       });
       const revealWord = () => {
-        if (session.stopped) return;
+        if (session.stopped || session.paused) return;
         i += 1;
         send(ws, SOCKET_EVENTS.TRANSCRIPT_PARTIAL, {
           meetingId: session.meetingId,
@@ -254,6 +337,7 @@ export function attachSocketServer(server: Server) {
               endTime: utt.endTime,
               isFinal: true,
             });
+            await maybeSuggestFromTranscript(utt.text);
             session.gapTimer = setTimeout(
               speakUtterance,
               500 + Math.random() * 400
@@ -291,6 +375,8 @@ export function attachSocketServer(server: Server) {
     ws.on("message", async (raw: RawData, isBinary: boolean) => {
       // Binary frames = raw audio chunks from the browser → forward to Deepgram.
       if (isBinary) {
+        // While paused, drop audio so nothing is transcribed or persisted.
+        if (session.paused) return;
         session.receivedPackets += 1;
         if (session.dg) session.dg.send(raw as Buffer);
         if (session.receivedPackets % 10 === 0) {
@@ -313,21 +399,59 @@ export function attachSocketServer(server: Server) {
           const meetingId = (msg.payload?.meetingId as string) ?? "";
           const mode = (msg.payload?.mode as SessionMode) ?? "real";
           session.mode = mode;
+          session.assistantMode = normalizeAssistantMode(
+            msg.payload?.assistantMode as string | undefined
+          );
           session.stopped = false;
+          session.paused = false;
           if (meetingId) {
             await prisma.meeting
               .update({
                 where: { id: meetingId },
-                data: { status: "RECORDING", startedAt: new Date() },
+                data: {
+                  status: "RECORDING",
+                  startedAt: new Date(),
+                  demoMode: mode === "demo",
+                },
               })
               .catch(() => null);
           }
           if (mode === "demo") await startDemoSession(meetingId);
           else startRealSession(meetingId);
+          sendLifecycle("recording", { mode });
+          break;
+        }
+        case SOCKET_EVENTS.MEETING_PAUSE: {
+          if (!session.paused && !session.stopped) {
+            session.paused = true;
+            clearTimers();
+            sendLifecycle("paused");
+            send(ws, SOCKET_EVENTS.MEETING_STATUS, {
+              meetingId: session.meetingId,
+              status: "RECORDING",
+              state: "paused",
+            });
+          }
+          break;
+        }
+        case SOCKET_EVENTS.MEETING_RESUME: {
+          if (session.paused && !session.stopped) {
+            session.paused = false;
+            sendLifecycle("recording");
+            send(ws, SOCKET_EVENTS.MEETING_STATUS, {
+              meetingId: session.meetingId,
+              status: "RECORDING",
+              state: session.mode === "demo" ? "live" : "listening",
+            });
+            // Demo simulator restarts its scheduling loop; real STT just resumes
+            // accepting audio frames again.
+            if (session.mode === "demo") speakUtterance();
+          }
           break;
         }
         case SOCKET_EVENTS.MEETING_STOP: {
           stopAll();
+          sendLifecycle("stopped");
           break;
         }
         case SOCKET_EVENTS.TRANSCRIPT_AUDIO_CHUNK: {
@@ -337,32 +461,35 @@ export function attachSocketServer(server: Server) {
         }
         case SOCKET_EVENTS.AI_ASK_LIVE: {
           const question = (msg.payload?.question as string) ?? "";
-          if (!hasOpenAI) {
-            send(ws, SOCKET_EVENTS.AI_SUGGESTION, {
+          session.assistantMode = normalizeAssistantMode(
+            msg.payload?.assistantMode as string | undefined
+          );
+          if (session.mode === "demo" || !hasOpenAI) {
+            await sendPrivateSuggestion(
               question,
-              configured: false,
-              suggestion:
-                "The private AI assistant requires an OpenAI API key. Add OPENAI_API_KEY on the server to enable live suggestions.",
+              generateMockPrivateSuggestion({
+                mode: session.assistantMode,
+                question,
+                transcriptContext: await recentContext(),
+              }),
+              false
+            );
+            break;
+          }
+          const ctx = await recentContext();
+          let suggestion: string;
+          try {
+            suggestion = await generateLiveSuggestion(question, ctx);
+          } catch (err) {
+            send(ws, SOCKET_EVENTS.AI_ERROR, {
+              message:
+                err instanceof Error
+                  ? err.message
+                  : "AI generation failed. No mock output was saved.",
             });
             break;
           }
-          const recent = await prisma.transcriptSegment
-            .findMany({
-              where: { meetingId: session.meetingId },
-              orderBy: { startTime: "desc" },
-              take: 6,
-            })
-            .catch(() => []);
-          const ctx = recent
-            .reverse()
-            .map((s) => `${s.speakerName}: ${s.text}`)
-            .join("\n");
-          const suggestion = await generateLiveSuggestion(question, ctx);
-          send(ws, SOCKET_EVENTS.AI_SUGGESTION, {
-            question,
-            configured: true,
-            suggestion,
-          });
+          await sendPrivateSuggestion(question, suggestion, true);
           break;
         }
         default:
