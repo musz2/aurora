@@ -16,6 +16,12 @@ const app = createApp();
 const server = createServer(app);
 attachSocketServer(server);
 
+// Surface bind failures explicitly instead of exiting silently.
+server.on("error", (err) => {
+  console.error(`[startup] server error: ${(err as Error).message}`);
+  process.exit(1);
+});
+
 // Bind to 0.0.0.0 so the server is reachable inside containers (Railway/Docker).
 server.listen(env.PORT, "0.0.0.0", () => {
   if (isProduction) {

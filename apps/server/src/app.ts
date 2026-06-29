@@ -78,8 +78,10 @@ export function createApp() {
   storage.ensureDir();
   app.use("/uploads", express.static(storage.localDir));
 
-  app.get("/api/health", (_req, res) => {
-    res.json({
+  // Health check. Kept dependency-free (no DB/network calls) so it returns 200
+  // instantly for platform health probes. Served at both /api/health and /health.
+  const healthHandler = (_req: express.Request, res: express.Response) => {
+    res.status(200).json({
       status: "ok",
       time: new Date().toISOString(),
       services: {
@@ -89,7 +91,9 @@ export function createApp() {
         storage: hasS3 ? "s3" : "local",
       },
     });
-  });
+  };
+  app.get("/api/health", healthHandler);
+  app.get("/health", healthHandler);
 
   // Public (no auth): capability config + shared session viewer.
   app.use("/api/config", configRoutes);
