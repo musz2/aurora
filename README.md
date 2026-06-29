@@ -185,7 +185,7 @@ The repo ships [`apps/web/vercel.json`](./apps/web/vercel.json).
 2. Vercel uses `vercel.json` (Vite framework, SPA rewrite to `index.html`, and a
    monorepo-aware build that compiles `@aurora/shared` first).
 3. **Set build-time env vars** (Project → Settings → Environment Variables):
-   - `VITE_API_URL=https://<your-railway-app>.up.railway.app/api`
+   - `VITE_API_URL=https://<your-railway-app>.up.railway.app`
    - `VITE_WS_URL=wss://<your-railway-app>.up.railway.app/ws`
 4. Deploy. After the first deploy, copy the Vercel URL into Railway’s
    `FRONTEND_URL` so CORS allows it.
