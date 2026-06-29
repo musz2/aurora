@@ -16,7 +16,10 @@ import {
   Pause,
   Play,
   Bug,
+  Smartphone,
+  X,
 } from "lucide-react";
+import QRCode from "qrcode";
 import { SOCKET_EVENTS, type UsageSummary, type SessionMode } from "@aurora/shared";
 import { api, apiError } from "@/lib/api";
 import { AuroraSocket, type ConnState } from "@/lib/ws";
@@ -109,6 +112,12 @@ export function LiveMeetingPage() {
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewMeeting, setReviewMeeting] = useState<MeetingDto | null>(null);
   const [reviewMeta, setReviewMeta] = useState<FinalizationMeta | null>(null);
+  const [companion, setCompanion] = useState<{
+    url: string;
+    qr: string;
+    expiresAt: string;
+  } | null>(null);
+  const [companionBusy, setCompanionBusy] = useState(false);
   const [debug, setDebug] = useState<DebugInfo>({
     packetsSent: 0,
     packetsReceived: 0,
@@ -469,6 +478,37 @@ export function LiveMeetingPage() {
     }
   };
 
+  const openCompanion = async () => {
+    if (!meetingIdRef.current) {
+      toast("Start a session before opening Companion Mode.", "error");
+      return;
+    }
+    setCompanionBusy(true);
+    try {
+      const { data } = await api.post("/companion/pair", {
+        meetingId: meetingIdRef.current,
+      });
+      const url = `${window.location.origin}/companion/${data.pairingId}#t=${data.token}`;
+      const qr = await QRCode.toDataURL(url, { margin: 1, width: 220 });
+      setCompanion({ url, qr, expiresAt: data.expiresAt });
+    } catch (err) {
+      toast(apiError(err, "Could not open Companion Mode"), "error");
+    } finally {
+      setCompanionBusy(false);
+    }
+  };
+
+  const revokeCompanion = async () => {
+    if (!meetingIdRef.current) return;
+    try {
+      await api.post("/companion/revoke", { meetingId: meetingIdRef.current });
+      setCompanion(null);
+      toast("Companion links revoked.", "success");
+    } catch (err) {
+      toast(apiError(err, "Could not revoke companion links"), "error");
+    }
+  };
+
   const revokeShareLink = async () => {
     if (!meetingIdRef.current) return;
     setSharing(true);
@@ -718,6 +758,33 @@ export function LiveMeetingPage() {
             </Card>
           )}
 
+          {recording && (
+            <Card className="p-4">
+              <div className="flex items-center gap-2 text-sm font-medium text-ink">
+                <Smartphone className="h-4 w-4 text-violetAccent" /> Companion Mode
+              </div>
+              <p className="mt-1 text-xs text-muted">
+                Open your host-only private copilot on a second device (e.g. your
+                phone). Secure pairing link with expiry — revoke anytime. Not visible
+                to participants or viewers.
+              </p>
+              <Button
+                variant="secondary"
+                size="sm"
+                className="mt-3 w-full"
+                onClick={openCompanion}
+                disabled={companionBusy}
+              >
+                {companionBusy ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Smartphone className="h-3.5 w-3.5" />
+                )}
+                Open Companion Mode
+              </Button>
+            </Card>
+          )}
+
           {DEV && (
             <Card className="p-4">
               <div className="mb-2 flex items-center gap-2 text-sm font-medium text-ink">
@@ -800,6 +867,68 @@ export function LiveMeetingPage() {
           onSaved={finishReview}
           onDiscard={discardMeeting}
         />
+      )}
+
+      {/* Companion pairing modal */}
+      {companion && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <Card className="w-full max-w-sm p-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Smartphone className="h-5 w-5 text-violetAccent" />
+                <h2 className="font-display text-xl text-ink">Pair a companion device</h2>
+              </div>
+              <button
+                onClick={() => setCompanion(null)}
+                className="rounded-md p-1 text-muted hover:bg-black/[0.04]"
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <p className="mt-2 text-sm text-muted">
+              Scan this private QR (or open the link) on your own phone. It opens your
+              host-only copilot — never shown to participants or viewers.
+            </p>
+            <div className="mt-4 flex justify-center">
+              <img
+                src={companion.qr}
+                alt="Companion pairing QR code"
+                className="rounded-xl border border-black/[0.06]"
+                width={200}
+                height={200}
+              />
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <input
+                readOnly
+                value={companion.url}
+                className="flex-1 truncate rounded-lg border border-black/10 bg-black/[0.02] px-2 py-1.5 text-xs text-muted"
+              />
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(companion.url);
+                  toast("Companion link copied", "success");
+                }}
+                className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-ink text-white"
+                aria-label="Copy companion link"
+              >
+                <Copy className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-muted">
+              Expires {new Date(companion.expiresAt).toLocaleString()}.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-3 w-full"
+              onClick={revokeCompanion}
+            >
+              Revoke companion links
+            </Button>
+          </Card>
+        </div>
       )}
 
       {/* Consent modal */}

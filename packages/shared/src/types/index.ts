@@ -85,6 +85,14 @@ export interface SharedSessionSummaryDto {
   decisions: string[];
 }
 
+/** Owner-reviewed answer the host explicitly published for viewers. */
+export interface PublishedAnswerDto {
+  id: string;
+  text: string;
+  publishedBy: string;
+  createdAt: string;
+}
+
 export interface PublicSessionDto {
   id: string;
   title: string;
@@ -95,6 +103,7 @@ export interface PublicSessionDto {
   endedAt: string | null;
   participants: string[];
   publishedNotes: string[];
+  publishedAnswers: PublishedAnswerDto[];
   segments: SharedTranscriptSegmentDto[];
   summary: SharedSessionSummaryDto | null;
 }

@@ -11,6 +11,7 @@ import { LandingPage } from "@/pages/public/LandingPage";
 import { ProductPage } from "@/pages/public/ProductPage";
 import { JoinPage } from "@/pages/public/JoinPage";
 import { ViewerPage } from "@/pages/viewer/ViewerPage";
+import { CompanionPage } from "@/pages/companion/CompanionPage";
 import { FeaturesPage } from "@/pages/public/FeaturesPage";
 import { UseCasesPage } from "@/pages/public/UseCasesPage";
 import { IntegrationsPage } from "@/pages/public/IntegrationsPage";
@@ -64,6 +65,7 @@ export function App() {
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/join" element={<JoinPage />} />
       <Route path="/s/:shareId" element={<ViewerPage />} />
+      <Route path="/companion/:pairingId" element={<CompanionPage />} />
 
       <Route
         path="/app"

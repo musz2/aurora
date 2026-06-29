@@ -13,6 +13,7 @@ import {
   Clock,
   ArrowRight,
   StickyNote,
+  Share2,
   Search as SearchIcon,
   ListChecks,
   Settings as SettingsIcon,
@@ -629,6 +630,9 @@ export function CopilotPage() {
 
         {tab === "Live Transcript" && (
           <Panel title="Live Transcript" icon={MessageSquare} subtitle="Shared transcript — visible to viewers if you share the session.">
+            <div className="mb-2">
+              <LabelChip kind="shared" />
+            </div>
             <div className="max-h-[60vh] space-y-2 overflow-y-auto pr-1">
               {segments.length === 0 ? (
                 <Empty>No transcript yet.</Empty>
@@ -742,6 +746,11 @@ export function CopilotPage() {
                 body="Copilot answers and notes are host-only. They are never sent to the shared viewer unless you explicitly publish them (with confirmation)."
               />
               <Setting
+                icon={privacyMode ? Lock : Unlock}
+                title={`Privacy Mode (${privacyMode ? "on" : "off"})`}
+                body="Blurs/locks private answers and auto-hides the overlay after inactivity to protect against shoulder-surfing. It does NOT hide content from screen sharing, recording, or monitoring tools — Aurora does not provide stealth, screen-share bypass, or proctoring evasion."
+              />
+              <Setting
                 icon={Eye}
                 title="Visible recording"
                 body="A recording indicator stays visible while a session is live. Aurora never hides or disguises recording."
@@ -779,6 +788,8 @@ export function CopilotPage() {
         status={status}
         suggestion={latest}
         shortcutLabel={SHORTCUT_LABEL}
+        privacyMode={privacyMode}
+        onAutoHide={() => setOverlayCollapsed(true)}
         onCopy={copy}
         onAddNote={addNote}
         onPublish={publish}
@@ -873,6 +884,23 @@ function Empty({ children }: { children: React.ReactNode }) {
     <p className="rounded-xl border border-dashed border-white/10 bg-white/[0.02] p-4 text-center text-xs leading-relaxed text-slate-400">
       {children}
     </p>
+  );
+}
+
+/** Private / Shared / Published trust labels. */
+function LabelChip({ kind }: { kind: "private" | "shared" | "published" }) {
+  const map = {
+    private: { label: "Private", cls: "bg-indigo-500/15 text-indigo-200", icon: Lock },
+    shared: { label: "Shared", cls: "bg-sky-500/15 text-sky-200", icon: Eye },
+    published: { label: "Published", cls: "bg-emerald-500/15 text-emerald-200", icon: Share2 },
+  } as const;
+  const { label, cls, icon: Icon } = map[kind];
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${cls}`}
+    >
+      <Icon className="h-2.5 w-2.5" /> {label}
+    </span>
   );
 }
 

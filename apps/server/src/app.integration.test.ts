@@ -62,6 +62,24 @@ test("protected route without auth returns 401", async () => {
   assert.equal(res.status, 401);
 });
 
+test("companion pair requires host auth", async () => {
+  const res = await fetch(`${base}/api/companion/pair`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ meetingId: "x" }),
+  });
+  assert.equal(res.status, 401);
+});
+
+test("companion session rejects a missing/invalid token", async () => {
+  const noToken = await fetch(`${base}/api/companion/session`);
+  assert.equal(noToken.status, 401);
+  const badToken = await fetch(`${base}/api/companion/session`, {
+    headers: { "x-companion-token": "cmp_not_a_real_token" },
+  });
+  assert.equal(badToken.status, 401);
+});
+
 test("Stripe webhook is honest when not configured", async () => {
   const res = await fetch(`${base}/api/billing/webhook`, {
     method: "POST",

@@ -190,6 +190,24 @@ export function ViewerPage() {
                   </ViewerCard>
                 )}
 
+                {session.publishedAnswers.length > 0 && (
+                  <ViewerCard icon={CheckCircle2} iconClass="text-emerald-600" title="Published by Host">
+                    <ul className="space-y-2.5">
+                      {session.publishedAnswers.map((a) => (
+                        <li
+                          key={a.id}
+                          className="rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2"
+                        >
+                          <p className="whitespace-pre-wrap text-sm text-ink/80">{a.text}</p>
+                          <p className="mt-1 text-[11px] font-medium text-emerald-700">
+                            Published by {a.publishedBy}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </ViewerCard>
+                )}
+
                 {session.publishedNotes.length > 0 && (
                   <ViewerCard icon={StickyNote} iconClass="text-aurora-600" title="Published notes">
                     <ul className="space-y-2">
@@ -202,7 +220,9 @@ export function ViewerPage() {
                   </ViewerCard>
                 )}
 
-                {!session.summary && session.publishedNotes.length === 0 && (
+                {!session.summary &&
+                  session.publishedNotes.length === 0 &&
+                  session.publishedAnswers.length === 0 && (
                   <div className="rounded-2xl border border-dashed border-black/10 bg-white p-6 text-center text-sm text-muted">
                     The host hasn’t published a summary or notes yet.
                   </div>

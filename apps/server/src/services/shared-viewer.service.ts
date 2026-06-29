@@ -1,5 +1,6 @@
 import type {
   PublicSessionDto,
+  PublishedAnswerDto,
   SharedSessionSummaryDto,
   SharedTranscriptSegmentDto,
 } from "@aurora/shared";
@@ -24,6 +25,12 @@ export interface MeetingForSharing {
   shared?: boolean;
   participants?: string[];
   publishedNotes?: string[];
+  publishedAnswers?: Array<{
+    id: string;
+    text: string;
+    publishedBy: string;
+    createdAt: Date | string;
+  }>;
   segments?: Array<{
     id: string;
     speakerName: string;
@@ -83,6 +90,17 @@ function sanitizeSegments(
   }));
 }
 
+function sanitizePublishedAnswers(
+  answers: MeetingForSharing["publishedAnswers"]
+): PublishedAnswerDto[] {
+  return (answers ?? []).map((a) => ({
+    id: a.id,
+    text: a.text,
+    publishedBy: a.publishedBy,
+    createdAt: a.createdAt instanceof Date ? a.createdAt.toISOString() : a.createdAt,
+  }));
+}
+
 function sanitizeSummary(
   summary: MeetingForSharing["summary"],
   live: boolean
@@ -117,6 +135,7 @@ export function sanitizePublicSession(
     endedAt: toIso(meeting.endedAt),
     participants: meeting.participants ?? [],
     publishedNotes: meeting.publishedNotes ?? [],
+    publishedAnswers: sanitizePublishedAnswers(meeting.publishedAnswers),
     segments: sanitizeSegments(meeting.segments),
     summary: sanitizeSummary(meeting.summary, live),
   };

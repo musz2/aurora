@@ -160,9 +160,43 @@ model Meeting {
   chatMessages ChatMessage[]
   privateAssistSuggestions PrivateAssistSuggestion[]
   usageRecords UsageRecord[]
+  publishedAnswers PublishedAnswer[]
+  companionPairings CompanionPairing[]
 
   @@index([workspaceId])
   @@index([status])
+}
+
+// Owner-reviewed answers the host explicitly published to the shared viewer.
+// Stored separately from private assistant drafts/notes: ONLY rows here are ever
+// exposed to viewers (drafts/notes/context/confidence are never persisted here).
+model PublishedAnswer {
+  id          String   @id @default(cuid())
+  meetingId   String
+  text        String
+  publishedBy String   @default("Host")
+  createdAt   DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+}
+
+// Secure pairing for host-only Companion Mode (host's second device). The raw
+// token is never stored — only its hash. Pairings expire and can be revoked.
+model CompanionPairing {
+  id          String   @id @default(cuid())
+  workspaceId String
+  userId      String
+  meetingId   String
+  tokenHash   String   @unique
+  expiresAt   DateTime
+  revoked     Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
 }
 
 model PrivateAssistSuggestion {

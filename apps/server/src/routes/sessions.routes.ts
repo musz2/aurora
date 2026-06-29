@@ -33,6 +33,10 @@ router.get(
         endedAt: true,
         participants: true,
         publishedNotes: true,
+        publishedAnswers: {
+          orderBy: { createdAt: "asc" },
+          select: { id: true, text: true, publishedBy: true, createdAt: true },
+        },
         segments: {
           orderBy: { startTime: "asc" },
           select: {

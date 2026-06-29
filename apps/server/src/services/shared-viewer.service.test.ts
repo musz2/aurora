@@ -17,6 +17,14 @@ const baseMeeting: MeetingForSharing & Record<string, unknown> = {
   shared: true,
   participants: ["Alex", "Sam"],
   publishedNotes: ["Kickoff next week"],
+  publishedAnswers: [
+    {
+      id: "pa1",
+      text: "We will ship the beta in July.",
+      publishedBy: "Host",
+      createdAt: new Date("2026-06-01T10:30:00.000Z"),
+    },
+  ],
   segments: [
     { id: "s1", speakerName: "Alex", text: "Hello", startTime: 0 },
     { id: "s2", speakerName: "Sam", text: "Hi", startTime: 2 },
@@ -46,6 +54,7 @@ test("sanitizePublicSession exposes only shared-safe fields", () => {
     "id",
     "live",
     "participants",
+    "publishedAnswers",
     "publishedNotes",
     "segments",
     "startedAt",
@@ -118,6 +127,26 @@ test("isShareActive honors revoke and expiry", () => {
     isShareActive({ shared: true, shareExpiresAt: new Date("2026-06-29T11:00:00.000Z") }, now),
     false
   );
+});
+
+test("published answers are exposed (sanitized) but drafts/context never are", () => {
+  // Host-only fields that must NOT leak even alongside a published answer.
+  const withDrafts: MeetingForSharing & Record<string, unknown> = {
+    ...baseMeeting,
+    privateAssistSuggestions: [{ suggestion: "draft answer", confidence: "high" }],
+    privateNotes: ["secret note"],
+  };
+  const out = sanitizePublicSession(withDrafts, "public-token");
+  assert.equal(out.publishedAnswers.length, 1);
+  const answer = out.publishedAnswers[0];
+  assert.deepEqual(Object.keys(answer).sort(), ["createdAt", "id", "publishedBy", "text"]);
+  assert.equal(answer.text, "We will ship the beta in July.");
+  assert.equal(answer.publishedBy, "Host");
+  // No draft/notes/context/confidence anywhere in the payload.
+  const serialized = JSON.stringify(out);
+  assert.ok(!serialized.includes("draft answer"));
+  assert.ok(!serialized.includes("secret note"));
+  assert.ok(!serialized.includes("confidence"));
 });
 
 test("viewer payload never contains private assistant suggestions or notes", () => {

@@ -27,6 +27,7 @@ import configRoutes from "./routes/config.routes.js";
 import sessionsRoutes from "./routes/sessions.routes.js";
 import calendarRoutes from "./routes/calendar.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
+import companionRoutes from "./routes/companion.routes.js";
 import { billingWebhookHandler } from "./routes/billing.routes.js";
 
 export function createApp() {
@@ -106,6 +107,9 @@ export function createApp() {
   app.use("/api/dashboard", dashboardRoutes);
   app.use("/api/calendar", calendarRoutes);
   app.use("/api/admin", adminRoutes);
+  // Companion Mode: pair/revoke are host-authenticated; session/ask/publish use a
+  // scoped companion token (host's second device). No viewer data is served here.
+  app.use("/api/companion", companionRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

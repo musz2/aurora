@@ -2,6 +2,42 @@
 
 Chronological log of every change and command in this upgrade pass. Newest at top.
 
+## Companion Mode + Owner-Reviewed Broadcast (all gates green)
+
+Host-only second-device copilot with secure pairing (hashed token, expiry, revoke) +
+owner-reviewed publish to viewers. No stealth/screen-share-hiding/proctoring-bypass/
+secret-recording/hidden-overlay. See `COMPANION_MODE_AND_BROADCAST_REPORT.md`.
+
+- Prisma `6_companion_and_published_answers`: `PublishedAnswer`, `CompanionPairing`.
+- `services/companion.service.ts` + `routes/companion.routes.ts` (pair/revoke host-auth;
+  session/ask/publish companion-token), mounted at `/api/companion`.
+- Viewer exposes sanitized published answers only (`shared-viewer.service.ts`,
+  `sessions.routes.ts`, shared `PublishedAnswerDto`).
+- Web: `CompanionPage` (8 modes, ask/next/summarize, edit-before-publish, confirmed
+  publish), Live Meeting "Open Companion Mode" QR pairing/revoke modal, viewer
+  "Published by Host". Deps: `qrcode`, `@types/qrcode`.
+- Tests 85 → **91** (companion service pure tests, host-auth + invalid-token integration,
+  published-answer privacy). typecheck/build/lint green.
+
+## Privacy Mode — safe shoulder-surfing protection (all gates green)
+
+Implemented the **safe** Privacy Mode requests only. Explicitly **refused / not built**:
+undetectable mode, screen-share bypass, proctoring bypass, hiding from monitoring/security
+tools, and secret recording — these deceive other parties / bypass consent and violate
+Aurora's product rules. Privacy Mode is shoulder-surfing protection; content stays fully
+visible to screen share, recording, and monitoring.
+
+- `apps/web/src/components/app/CopilotOverlay.tsx` — `privacyMode` + `onAutoHide` props;
+  blur/lock of the answer with a "tap to reveal" / "hide again" control; re-lock on new
+  suggestion + when Privacy Mode turns on; 30s inactivity auto-hide (resets on interaction);
+  "Privacy" header chip. Documented as non-stealth.
+- `apps/web/src/pages/app/CopilotPage.tsx` — Privacy Mode toggle (on by default) in the top
+  bar; in-page Private Answer blur/lock + reveal; Private/Shared/Published `LabelChip`s;
+  Meeting Memory "Published to viewers" section; Settings disclaimer that Privacy Mode is NOT
+  stealth/screen-share/proctoring evasion. Kept visible REC indicator, consent gate, and
+  confirmed Publish-to-Transcript.
+- Gates: typecheck ✅ (4/4) · server tests ✅ 85/85 · build ✅ (server+web+desktop) · lint ✅.
+
 ## Loop 5 — Quality, testing, polish (all gates green)
 
 - `apps/server/src/app.integration.test.ts` (new) — boots the real Express app on an
