@@ -286,11 +286,25 @@ export function LiveMeetingPage() {
     });
 
     // Stream real microphone audio as binary frames (real mode only).
+    // Wait for the socket to open before starting the recorder so that
+    // the first audio chunks are not silently dropped.
     if (m === "real" && stream) {
+      // Ensure the socket is open before we start sending binary audio.
+      // The socket may still be connecting (esp. on a cold connection to
+      // Railway). MEETING_START is queued and will be sent when the socket
+      // opens; we want the same guarantee for binary audio frames.
+      await socket.waitForOpen();
+
       const mimeType = pickMimeType();
       try {
         const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
         recorderRef.current = recorder;
+        recorder.onstart = () => {
+          if (DEV) console.info("[recorder] started", mimeType || "browser default");
+        };
+        recorder.onerror = () => {
+          if (DEV) console.warn("[recorder] error", recorder.state);
+        };
         recorder.ondataavailable = (e) => {
           if (e.data && e.data.size > 0) {
             socket.sendBinary(e.data);
@@ -301,11 +315,11 @@ export function LiveMeetingPage() {
             }));
             if (DEV && Math.random() < 0.1)
               // eslint-disable-next-line no-console
-              console.log("[audio] chunk sent", e.data.size, "bytes", mimeType);
+              console.log("[audio] chunk sent", e.data.size, "bytes", mimeType || "browser default");
           }
         };
         recorder.start(150); // 150ms chunks for low-latency interim results
-        if (DEV) console.info("[audio] MediaRecorder started", mimeType);
+        if (DEV) console.info("[audio] MediaRecorder started", mimeType || "browser default");
       } catch (err) {
         toast("Could not start audio recorder on this browser.", "error");
         if (DEV) console.error(err);

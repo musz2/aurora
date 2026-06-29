@@ -31,6 +31,15 @@ export class AuroraSocket {
   private shouldReconnect = true;
   private reconnectAttempts = 0;
   private queue: string[] = [];
+  private binaryQueue: (ArrayBuffer | Blob)[] = [];
+  private openPromise: Promise<void>;
+  private resolveOpen: (() => void) | null = null;
+
+  constructor() {
+    this.openPromise = new Promise((resolve) => {
+      this.resolveOpen = resolve;
+    });
+  }
 
   onState(cb: (s: ConnState) => void) {
     this.stateCb = cb;
@@ -48,6 +57,12 @@ export class AuroraSocket {
       this.stateCb?.("open");
       this.queue.forEach((m) => this.ws?.send(m));
       this.queue = [];
+      this.binaryQueue.forEach((b) => this.ws?.send(b));
+      this.binaryQueue = [];
+      this.resolveOpen?.();
+      this.openPromise = new Promise((resolve) => {
+        this.resolveOpen = resolve;
+      });
     };
     this.ws.onmessage = (e) => {
       try {
@@ -69,6 +84,12 @@ export class AuroraSocket {
     return this;
   }
 
+  /** Returns once the WebSocket is open (connects or already connected). */
+  waitForOpen(): Promise<void> {
+    if (this.ws?.readyState === WebSocket.OPEN) return Promise.resolve();
+    return this.openPromise;
+  }
+
   on(event: string, handler: Handler) {
     if (!this.handlers.has(event)) this.handlers.set(event, new Set());
     this.handlers.get(event)!.add(handler);
@@ -81,9 +102,13 @@ export class AuroraSocket {
     else this.queue.push(data);
   }
 
-  /** Send raw audio bytes as a binary frame (dropped if socket not open). */
+  /** Send raw audio bytes as a binary frame (queued until socket opens). */
   sendBinary(buffer: ArrayBuffer | Blob) {
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(buffer);
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(buffer);
+    } else {
+      if (this.binaryQueue.length < 400) this.binaryQueue.push(buffer);
+    }
   }
 
   get ready() {
@@ -95,5 +120,7 @@ export class AuroraSocket {
     this.ws?.close();
     this.ws = null;
     this.handlers.clear();
+    this.queue = [];
+    this.binaryQueue = [];
   }
 }
