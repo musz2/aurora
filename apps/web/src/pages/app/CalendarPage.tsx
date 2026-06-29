@@ -1,13 +1,13 @@
 import { useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Calendar, Video, Check, Bot, MonitorSpeaker, Link2 } from "lucide-react";
-import { api } from "@/lib/api";
+import { api, apiError } from "@/lib/api";
 import { Card, Badge } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { PageTitle } from "@/components/app/shared";
 import { useToast } from "@/components/ui/Toast";
 import { formatDateTime } from "@/lib/format";
-import type { MeetingDto } from "@aurora/shared";
+import type { IntegrationCatalogEntry, MeetingDto } from "@aurora/shared";
 
 interface CalendarEventDto {
   id: string;
@@ -27,13 +27,52 @@ const LIMITATIONS: Record<string, string> = {
   teams: "Teams bot joining requires Microsoft Graph permissions and tenant admin consent.",
 };
 
+// Calendar UI tiles → integration catalog provider ids (single source of truth
+// for connection state lives in the backend integrations service).
+const CALENDAR_PROVIDERS = [
+  { id: "google-calendar", name: "Google Calendar", color: "#4285F4" },
+  { id: "outlook-calendar", name: "Outlook Calendar", color: "#0078D4" },
+] as const;
+
 export function CalendarPage() {
   const { toast } = useToast();
+  const qc = useQueryClient();
   const [autoRecord, setAutoRecord] = useState(true);
-  const [connected, setConnected] = useState<Record<string, boolean>>({
-    google: true,
-    outlook: false,
+
+  // Honest connection state: a calendar shows "Connected" only when the backend
+  // confirms a real OAuth/token connection (state === "CONNECTED"). No local
+  // optimistic "connected" flags.
+  const { data: integrations } = useQuery({
+    queryKey: ["integrations"],
+    queryFn: async () =>
+      (
+        await api.get<{
+          integrations: (IntegrationCatalogEntry & { configured?: boolean })[];
+        }>("/integrations")
+      ).data.integrations,
   });
+
+  const connect = useMutation({
+    mutationFn: async (provider: string) =>
+      (await api.post(`/integrations/${provider}/connect`)).data as {
+        authUrl?: string;
+        message: string;
+        mode?: "mock";
+        state?: string;
+      },
+    onSuccess: (res) => {
+      if (res.authUrl) {
+        window.location.href = res.authUrl;
+        return;
+      }
+      toast(res.message, res.mode === "mock" ? "info" : "success");
+      qc.invalidateQueries({ queryKey: ["integrations"] });
+    },
+    onError: (err) => toast(apiError(err, "Could not start connection."), "error"),
+  });
+
+  const calendarState = (providerId: string) =>
+    integrations?.find((it) => it.provider === providerId)?.state;
 
   const { data } = useQuery({
     queryKey: ["meetings", "", "SCHEDULED"],
@@ -97,43 +136,51 @@ export function CalendarPage() {
           <Card className="p-5">
             <h2 className="font-semibold text-ink">Connected calendars</h2>
             <div className="mt-4 space-y-3">
-              {[
-                { id: "google", name: "Google Calendar", color: "#4285F4" },
-                { id: "outlook", name: "Outlook Calendar", color: "#0078D4" },
-              ].map((c) => (
-                <div
-                  key={c.id}
-                  className="flex items-center justify-between rounded-xl border border-black/[0.06] p-3"
-                >
-                  <div className="flex items-center gap-3">
-                    <span
-                      className="grid h-9 w-9 place-items-center rounded-lg text-sm font-bold text-white"
-                      style={{ backgroundColor: c.color }}
-                    >
-                      {c.name[0]}
-                    </span>
-                    <span className="text-sm font-medium text-ink">
-                      {c.name}
-                    </span>
+              {CALENDAR_PROVIDERS.map((c) => {
+                const state = calendarState(c.id);
+                const isConnected = state === "CONNECTED";
+                return (
+                  <div
+                    key={c.id}
+                    className="flex items-center justify-between rounded-xl border border-black/[0.06] p-3"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className="grid h-9 w-9 place-items-center rounded-lg text-sm font-bold text-white"
+                        style={{ backgroundColor: c.color }}
+                      >
+                        {c.name[0]}
+                      </span>
+                      <span className="text-sm font-medium text-ink">
+                        {c.name}
+                      </span>
+                    </div>
+                    {isConnected ? (
+                      <Badge tone="green">
+                        <Check className="h-3 w-3" /> Connected
+                      </Badge>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={connect.isPending}
+                        onClick={() => connect.mutate(c.id)}
+                      >
+                        Connect
+                      </Button>
+                    )}
                   </div>
-                  {connected[c.id] ? (
-                    <Badge tone="green">
-                      <Check className="h-3 w-3" /> Connected
-                    </Badge>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() =>
-                        setConnected((s) => ({ ...s, [c.id]: true }))
-                      }
-                    >
-                      Connect
-                    </Button>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
+            <p className="mt-3 text-xs text-muted">
+              Calendars show “Connected” only after a verified provider connection.
+              Manage credentials on the{" "}
+              <a href="/app/integrations" className="font-medium text-aurora-700">
+                Integrations
+              </a>{" "}
+              page.
+            </p>
           </Card>
 
           <Card className="p-5">

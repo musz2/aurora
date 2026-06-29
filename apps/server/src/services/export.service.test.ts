@@ -24,6 +24,7 @@ function sampleMeeting(): ExportableMeeting {
     participants: ["Maya"],
     shared: false,
     shareId: null,
+    shareExpiresAt: null,
     publishedNotes: [],
     demoMode: false,
     createdById: "u1",
@@ -88,6 +89,33 @@ test("exportMeeting creates PDF and DOCX binary files", () => {
 
   const docx = exportMeeting(sampleMeeting(), "docx");
   assert.equal(docx.buffer.readUInt32LE(0), 0x04034b50);
+});
+
+test("TXT export includes summary, decisions, action items, and transcript", () => {
+  const txt = exportMeeting(sampleMeeting(), "txt").buffer.toString();
+  assert.match(txt, /Launch sync/);
+  assert.match(txt, /The team aligned on launch tasks\./); // overview
+  assert.match(txt, /Decisions[\s\S]*Ship the campaign/); // decisions section
+  assert.match(txt, /Action items[\s\S]*Send launch notes \(Maya\)/); // owner
+  assert.match(txt, /Transcript[\s\S]*Maya: We will ship next week\./); // speaker + text
+});
+
+test("JSON export round-trips meeting data with summary and segments", () => {
+  const json = exportMeeting(sampleMeeting(), "json");
+  assert.equal(json.contentType, "application/json");
+  const parsed = JSON.parse(json.buffer.toString());
+  assert.equal(parsed.title, "Launch sync");
+  assert.equal(parsed.summary.decisions[0], "Ship the campaign");
+  assert.equal(parsed.segments[0].speakerName, "Maya");
+  assert.equal(parsed.actionItems[0].task, "Send launch notes");
+});
+
+test("every supported format produces a non-empty buffer", () => {
+  for (const format of ["pdf", "docx", "txt", "srt", "vtt", "json"] as const) {
+    const out = exportMeeting(sampleMeeting(), format);
+    assert.equal(out.extension, format);
+    assert.ok(out.buffer.length > 0, `${format} buffer was empty`);
+  }
 });
 
 test("export route helpers create safe attachment headers", () => {

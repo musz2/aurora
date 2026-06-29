@@ -4,18 +4,26 @@ import { SOCKET_EVENTS, type SessionMode } from "@aurora/shared";
 import { verifyAccessToken, type TokenPayload } from "../utils/jwt.js";
 import { prisma } from "../lib/prisma.js";
 import { TranscriptSimulator } from "../services/transcript.simulator.js";
-import { generateLiveSuggestion } from "../services/ai.service.js";
+import { generateStructuredLiveSuggestion } from "../services/ai.service.js";
 import {
   createLiveTranscription,
   type LiveSttConnection,
 } from "../services/deepgram.service.js";
-import { hasDeepgram, hasOpenAI } from "../config/env.js";
+import { hasDeepgram } from "../config/env.js";
 import {
   detectQuestions,
-  generateMockPrivateSuggestion,
   normalizeAssistantMode,
+  parseAssistantIntent,
+  renderSuggestionText,
+  type AssistantContext,
   type AssistantMode,
+  type StructuredSuggestion,
 } from "../services/private-assistant.service.js";
+import {
+  FinalSegmentWindow,
+  isDuplicateFinalSegment,
+} from "../services/transcript-segment.service.js";
+import { toRecordingState } from "../services/recording-state.service.js";
 
 interface ClientMessage {
   type: string;
@@ -39,6 +47,8 @@ interface Session {
   stopped: boolean;
   paused: boolean;
   assistantMode: AssistantMode;
+  // In-session dedup of finalized segments (reconnect-safe layer is DB-backed).
+  finals: FinalSegmentWindow;
 }
 
 function send(ws: WebSocket, type: string, payload: unknown) {
@@ -79,13 +89,40 @@ export function attachSocketServer(server: Server) {
       stopped: false,
       paused: false,
       assistantMode: "Technical Meeting",
+      finals: new FinalSegmentWindow(),
     };
 
     const sendLifecycle = (state: string, extra?: Record<string, unknown>) =>
       send(ws, SOCKET_EVENTS.MEETING_LIFECYCLE, {
         meetingId: session.meetingId,
         state,
+        recordingState: toRecordingState({
+          engineState: state,
+          paused: session.paused,
+          stopped: session.stopped,
+        }),
         ...extra,
+      });
+
+    /**
+     * Emit a meeting status with a canonical `recordingState` attached so the UI
+     * always renders one of the stable states (idle/connecting/recording/paused/
+     * reconnecting/stopped/failed) regardless of engine-specific `state` hints.
+     */
+    const sendStatus = (payload: {
+      status: string;
+      state?: string;
+      engine?: string;
+    }) =>
+      send(ws, SOCKET_EVENTS.MEETING_STATUS, {
+        meetingId: session.meetingId,
+        ...payload,
+        recordingState: toRecordingState({
+          status: payload.status,
+          engineState: payload.state,
+          paused: session.paused,
+          stopped: session.stopped,
+        }),
       });
 
     const clearTimers = () => {
@@ -95,14 +132,30 @@ export function attachSocketServer(server: Server) {
       session.gapTimer = null;
     };
 
+    /**
+     * Persist a finalized segment, deduplicating against (a) earlier finals in
+     * this socket session and (b) finals already stored for this meeting by a
+     * previous socket (reconnect replay). Returns the new segment id, or null
+     * when the segment was a duplicate and should NOT be broadcast/persisted.
+     */
     const persistFinal = async (
       speakerName: string,
       text: string,
       startTime: number
-    ): Promise<string> => {
-      let id = `tmp-${Date.now()}`;
-      if (!session.meetingId) return id;
+    ): Promise<string | null> => {
+      const candidate = { speakerName, text, startTime };
+      // Fast path: duplicate within the current connection.
+      if (session.finals.isDuplicate(candidate)) return null;
+      if (!session.meetingId) return `tmp-${Date.now()}`;
       try {
+        // Reconnect-safe path: compare against the most recent persisted finals.
+        const recent = await prisma.transcriptSegment.findMany({
+          where: { meetingId: session.meetingId },
+          orderBy: { startTime: "desc" },
+          take: 15,
+          select: { speakerName: true, text: true, startTime: true },
+        });
+        if (isDuplicateFinalSegment(candidate, recent)) return null;
         const saved = await prisma.transcriptSegment.create({
           data: {
             meetingId: session.meetingId,
@@ -113,11 +166,11 @@ export function attachSocketServer(server: Server) {
             confidence: null,
           },
         });
-        id = saved.id;
+        return saved.id;
       } catch {
         /* meeting may be ad-hoc */
+        return `tmp-${Date.now()}`;
       }
-      return id;
     };
 
     const recentContext = async () => {
@@ -134,54 +187,122 @@ export function attachSocketServer(server: Server) {
         .join("\n");
     };
 
-    const sendPrivateSuggestion = async (question: string, suggestion: string, configured: boolean) => {
+    /**
+     * Assemble the host-only assistant context: recent transcript + meeting title
+     * + speaker names + workspace vocabulary + the host's own private notes. All
+     * host-only; none of this is ever sent to the shared viewer.
+     */
+    const buildAssistantContext = async (): Promise<AssistantContext> => {
+      const recentTranscript = await recentContext();
+      if (!session.meetingId) return { recentTranscript };
+      const meeting = await prisma.meeting
+        .findUnique({
+          where: { id: session.meetingId },
+          select: { title: true, workspaceId: true },
+        })
+        .catch(() => null);
+      if (!meeting) return { recentTranscript };
+      const [speakers, vocab, notes] = await Promise.all([
+        prisma.transcriptSegment
+          .findMany({
+            where: { meetingId: session.meetingId },
+            distinct: ["speakerName"],
+            select: { speakerName: true },
+            take: 12,
+          })
+          .catch(() => [] as { speakerName: string }[]),
+        prisma.customVocabulary
+          .findMany({
+            where: { workspaceId: meeting.workspaceId },
+            select: { term: true },
+            take: 50,
+          })
+          .catch(() => [] as { term: string }[]),
+        prisma.privateAssistSuggestion
+          .findMany({
+            where: {
+              meetingId: session.meetingId,
+              userId: auth!.userId,
+              question: "Private note",
+            },
+            select: { suggestion: true },
+            orderBy: { createdAt: "desc" },
+            take: 10,
+          })
+          .catch(() => [] as { suggestion: string }[]),
+      ]);
+      return {
+        recentTranscript,
+        meetingTitle: meeting.title,
+        speakerNames: speakers.map((s) => s.speakerName),
+        vocabulary: vocab.map((v) => v.term),
+        privateNotes: notes.map((n) => n.suggestion),
+      };
+    };
+
+    const sendStructuredSuggestion = async (
+      suggestion: StructuredSuggestion,
+      configured: boolean
+    ) => {
+      const text = renderSuggestionText(suggestion);
       if (session.meetingId) {
         await prisma.privateAssistSuggestion
           .create({
             data: {
               meetingId: session.meetingId,
               userId: auth!.userId,
-              question,
-              suggestion,
+              question: suggestion.question,
+              suggestion: text,
             },
           })
           .catch(() => null);
       }
       send(ws, SOCKET_EVENTS.AI_SUGGESTION, {
-        question,
+        question: suggestion.question,
         configured,
         mode: session.assistantMode,
+        intent: suggestion.intent,
+        confidence: suggestion.confidence,
         private: true,
-        suggestion,
+        suggestion: text, // readable string (backward-compatible)
+        structured: suggestion, // full structured payload for rich rendering
       });
+    };
+
+    /**
+     * Produce one private suggestion for a host ask or detected question. `manual`
+     * asks surface AI errors to the host; auto-detected ones fail silently so the
+     * transcript keeps flowing.
+     */
+    const suggest = async (rawQuestion: string, manual: boolean) => {
+      const intent = parseAssistantIntent(rawQuestion);
+      const context = await buildAssistantContext();
+      try {
+        const { suggestion, configured } = await generateStructuredLiveSuggestion({
+          question: rawQuestion,
+          mode: session.assistantMode,
+          intent,
+          context,
+          demoMode: session.mode === "demo",
+        });
+        await sendStructuredSuggestion(suggestion, configured);
+      } catch (err) {
+        if (manual) {
+          send(ws, SOCKET_EVENTS.AI_ERROR, {
+            message:
+              err instanceof Error
+                ? err.message
+                : "AI generation failed. No mock output was saved.",
+          });
+        }
+        /* auto-detected: keep transcription flowing even if assistant fails */
+      }
     };
 
     const maybeSuggestFromTranscript = async (text: string) => {
       const questions = detectQuestions(text);
-      if (questions.length === 0) return;
-      const ctx = await recentContext();
       for (const q of questions.slice(0, 2)) {
-        if (session.mode === "demo" || !hasOpenAI) {
-          await sendPrivateSuggestion(
-            q.question,
-            generateMockPrivateSuggestion({
-              mode: session.assistantMode,
-              question: q.question,
-              transcriptContext: ctx,
-            }),
-            false
-          );
-        } else {
-          try {
-            await sendPrivateSuggestion(
-              q.question,
-              await generateLiveSuggestion(q.question, ctx),
-              true
-            );
-          } catch {
-            /* keep transcription flowing even if assistant fails */
-          }
-        }
+        await suggest(q.question, false);
       }
     };
 
@@ -200,21 +321,11 @@ export function attachSocketServer(server: Server) {
           message:
             "Live transcription is not configured. Set DEEPGRAM_API_KEY on the server to enable real speech-to-text.",
         });
-        send(ws, SOCKET_EVENTS.MEETING_STATUS, {
-          meetingId,
-          status: "RECORDING",
-          state: "error",
-          engine: "none",
-        });
+        sendStatus({ status: "RECORDING", state: "error", engine: "none" });
         return;
       }
 
-      send(ws, SOCKET_EVENTS.MEETING_STATUS, {
-        meetingId,
-        status: "RECORDING",
-        engine: "deepgram",
-        state: "listening",
-      });
+      sendStatus({ status: "RECORDING", engine: "deepgram", state: "listening" });
       send(ws, SOCKET_EVENTS.RECORDING_WARNING, {
         message:
           "Recording active. Ensure all participants have consented per your workspace policy.",
@@ -253,21 +364,20 @@ export function attachSocketServer(server: Server) {
           const relStart = e.start;
           if (e.isFinal) {
             const id = await persistFinal(speaker, e.text, relStart);
-            send(ws, SOCKET_EVENTS.TRANSCRIPT_SEGMENT, {
-              id,
-              meetingId,
-              speakerName: speaker,
-              text: e.text,
-              startTime: relStart,
-              endTime: relStart,
-              isFinal: true,
-            });
-            await maybeSuggestFromTranscript(e.text);
-            send(ws, SOCKET_EVENTS.MEETING_STATUS, {
-              meetingId,
-              status: "RECORDING",
-              state: "live",
-            });
+            // null = duplicate final (reconnect replay / DG re-send) — skip it.
+            if (id !== null) {
+              send(ws, SOCKET_EVENTS.TRANSCRIPT_SEGMENT, {
+                id,
+                meetingId,
+                speakerName: speaker,
+                text: e.text,
+                startTime: relStart,
+                endTime: relStart,
+                isFinal: true,
+              });
+              await maybeSuggestFromTranscript(e.text);
+            }
+            sendStatus({ status: "RECORDING", state: "live" });
           } else {
             send(ws, SOCKET_EVENTS.TRANSCRIPT_PARTIAL, {
               meetingId,
@@ -289,21 +399,13 @@ export function attachSocketServer(server: Server) {
     const speakUtterance = () => {
       if (session.stopped || session.paused) return;
       if (!session.simulator.hasMore()) {
-        send(ws, SOCKET_EVENTS.MEETING_STATUS, {
-          meetingId: session.meetingId,
-          status: "PROCESSING",
-          state: "finalized",
-        });
+        sendStatus({ status: "PROCESSING", state: "finalized" });
         return;
       }
       const utt = session.simulator.next();
       const words = utt.text.split(" ");
       let i = 0;
-      send(ws, SOCKET_EVENTS.MEETING_STATUS, {
-        meetingId: session.meetingId,
-        status: "RECORDING",
-        state: "listening",
-      });
+      sendStatus({ status: "RECORDING", state: "listening" });
       const revealWord = () => {
         if (session.stopped || session.paused) return;
         i += 1;
@@ -316,11 +418,7 @@ export function attachSocketServer(server: Server) {
         if (i < words.length) {
           session.wordTimer = setTimeout(revealWord, 90 + Math.random() * 100);
         } else {
-          send(ws, SOCKET_EVENTS.MEETING_STATUS, {
-            meetingId: session.meetingId,
-            status: "RECORDING",
-            state: "processing",
-          });
+          sendStatus({ status: "RECORDING", state: "processing" });
           session.gapTimer = setTimeout(async () => {
             if (session.stopped) return;
             const id = await persistFinal(
@@ -328,16 +426,18 @@ export function attachSocketServer(server: Server) {
               utt.text,
               utt.startTime
             );
-            send(ws, SOCKET_EVENTS.TRANSCRIPT_SEGMENT, {
-              id,
-              meetingId: session.meetingId,
-              speakerName: utt.speakerName,
-              text: utt.text,
-              startTime: utt.startTime,
-              endTime: utt.endTime,
-              isFinal: true,
-            });
-            await maybeSuggestFromTranscript(utt.text);
+            if (id !== null) {
+              send(ws, SOCKET_EVENTS.TRANSCRIPT_SEGMENT, {
+                id,
+                meetingId: session.meetingId,
+                speakerName: utt.speakerName,
+                text: utt.text,
+                startTime: utt.startTime,
+                endTime: utt.endTime,
+                isFinal: true,
+              });
+              await maybeSuggestFromTranscript(utt.text);
+            }
             session.gapTimer = setTimeout(
               speakUtterance,
               500 + Math.random() * 400
@@ -351,12 +451,8 @@ export function attachSocketServer(server: Server) {
     const startDemoSession = async (meetingId: string) => {
       session.meetingId = meetingId;
       session.simulator = new TranscriptSimulator();
-      send(ws, SOCKET_EVENTS.MEETING_STATUS, {
-        meetingId,
-        status: "RECORDING",
-        engine: "simulated",
-        state: "live",
-      });
+      session.finals.reset();
+      sendStatus({ status: "RECORDING", engine: "simulated", state: "live" });
       clearTimers();
       speakUtterance();
     };
@@ -365,11 +461,7 @@ export function attachSocketServer(server: Server) {
       session.stopped = true;
       clearTimers();
       session.dg?.finish();
-      send(ws, SOCKET_EVENTS.MEETING_STATUS, {
-        meetingId: session.meetingId,
-        status: "PROCESSING",
-        state: "finalized",
-      });
+      sendStatus({ status: "PROCESSING", state: "finalized" });
     };
 
     ws.on("message", async (raw: RawData, isBinary: boolean) => {
@@ -426,11 +518,7 @@ export function attachSocketServer(server: Server) {
             session.paused = true;
             clearTimers();
             sendLifecycle("paused");
-            send(ws, SOCKET_EVENTS.MEETING_STATUS, {
-              meetingId: session.meetingId,
-              status: "RECORDING",
-              state: "paused",
-            });
+            sendStatus({ status: "RECORDING", state: "paused" });
           }
           break;
         }
@@ -438,8 +526,7 @@ export function attachSocketServer(server: Server) {
           if (session.paused && !session.stopped) {
             session.paused = false;
             sendLifecycle("recording");
-            send(ws, SOCKET_EVENTS.MEETING_STATUS, {
-              meetingId: session.meetingId,
+            sendStatus({
               status: "RECORDING",
               state: session.mode === "demo" ? "live" : "listening",
             });
@@ -464,32 +551,7 @@ export function attachSocketServer(server: Server) {
           session.assistantMode = normalizeAssistantMode(
             msg.payload?.assistantMode as string | undefined
           );
-          if (session.mode === "demo" || !hasOpenAI) {
-            await sendPrivateSuggestion(
-              question,
-              generateMockPrivateSuggestion({
-                mode: session.assistantMode,
-                question,
-                transcriptContext: await recentContext(),
-              }),
-              false
-            );
-            break;
-          }
-          const ctx = await recentContext();
-          let suggestion: string;
-          try {
-            suggestion = await generateLiveSuggestion(question, ctx);
-          } catch (err) {
-            send(ws, SOCKET_EVENTS.AI_ERROR, {
-              message:
-                err instanceof Error
-                  ? err.message
-                  : "AI generation failed. No mock output was saved.",
-            });
-            break;
-          }
-          await sendPrivateSuggestion(question, suggestion, true);
+          await suggest(question, true);
           break;
         }
         default:

@@ -1,4 +1,6 @@
-import { hasDeepgram, hasOpenAI } from "../config/env.js";
+import fs from "node:fs";
+import OpenAI from "openai";
+import { env, hasDeepgram, hasOpenAI } from "../config/env.js";
 import { HttpError } from "../utils/http.js";
 import { TranscriptSimulator } from "./transcript.simulator.js";
 
@@ -67,20 +69,80 @@ class DeepgramUploadedTranscriptionProvider implements UploadedTranscriptionProv
   }
 }
 
+/** Shape of OpenAI's `verbose_json` transcription response (segments + duration). */
+interface WhisperVerboseJson {
+  duration?: number;
+  segments?: Array<{ start: number; end: number; text: string }>;
+  text?: string;
+}
+
 class OpenAIUploadedTranscriptionProvider implements UploadedTranscriptionProvider {
   name = "openai" as const;
 
-  async transcribe(_input: UploadedTranscriptionInput): Promise<UploadedTranscriptionResult> {
+  async transcribe(
+    input: UploadedTranscriptionInput
+  ): Promise<UploadedTranscriptionResult> {
     if (!hasOpenAI) {
       throw new HttpError(
         503,
         "Upload transcription is not configured. Set OPENAI_API_KEY or use demo mode for sample output."
       );
     }
-    throw new HttpError(
-      501,
-      "OpenAI upload transcription provider is not implemented yet. No simulated transcript was generated."
-    );
+    const client = new OpenAI({ apiKey: env.OPENAI_API_KEY });
+    let result: WhisperVerboseJson;
+    try {
+      // Real batch transcription via Whisper. `verbose_json` yields timestamped
+      // segments. Whisper does NOT diarize, so we honestly label a single speaker
+      // rather than fabricating speaker turns.
+      result = (await client.audio.transcriptions.create({
+        file: fs.createReadStream(input.filePath),
+        model: "whisper-1",
+        response_format: "verbose_json",
+      })) as unknown as WhisperVerboseJson;
+    } catch (err) {
+      throw new HttpError(
+        502,
+        `Upload transcription failed via OpenAI Whisper: ${
+          err instanceof Error ? err.message : "unknown error"
+        }. No simulated transcript was generated.`
+      );
+    }
+
+    const rawSegments = result.segments ?? [];
+    const segments: UploadedTranscriptSegment[] = rawSegments.length
+      ? rawSegments.map((s) => ({
+          speakerName: "Speaker 1",
+          text: s.text.trim(),
+          startTime: s.start,
+          endTime: s.end,
+          confidence: null,
+        }))
+      : result.text
+        ? [
+            {
+              speakerName: "Speaker 1",
+              text: result.text.trim(),
+              startTime: 0,
+              endTime: result.duration ?? 0,
+              confidence: null,
+            },
+          ]
+        : [];
+
+    if (segments.length === 0) {
+      throw new HttpError(
+        502,
+        "OpenAI Whisper returned no transcript for this file. No simulated transcript was generated."
+      );
+    }
+
+    return {
+      segments,
+      durationSeconds: Math.max(
+        1,
+        Math.ceil(result.duration ?? segments.at(-1)?.endTime ?? 1)
+      ),
+    };
   }
 }
 

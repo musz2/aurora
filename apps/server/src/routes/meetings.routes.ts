@@ -681,13 +681,44 @@ router.post(
       select: { id: true, shareId: true },
     });
     if (!existing) throw notFound("Meeting not found");
-    const shareId =
-      existing.shareId ?? `s_${nanoid(12)}`;
+
+    // Optional expiry window. `expiresInHours` (number) sets a future expiry;
+    // omitting it (or passing null) keeps the link non-expiring.
+    const expiresInHours = Number(req.body?.expiresInHours);
+    const shareExpiresAt =
+      enable && Number.isFinite(expiresInHours) && expiresInHours > 0
+        ? new Date(Date.now() + expiresInHours * 3600_000)
+        : null;
+
+    if (enable) {
+      // Rotate to a fresh token only when there is none, so existing valid links
+      // stay stable; a revoke (below) is what invalidates a link.
+      const shareId = existing.shareId ?? `s_${nanoid(12)}`;
+      await prisma.meeting.update({
+        where: { id: existing.id },
+        data: { shared: true, shareId, shareExpiresAt },
+      });
+      await writeAudit(req.auth!.workspaceId, req.auth!.userId, "meeting_shared", {
+        meetingId: existing.id,
+        expiresAt: shareExpiresAt?.toISOString() ?? null,
+      });
+      return res.json({
+        shared: true,
+        shareId,
+        shareExpiresAt: shareExpiresAt?.toISOString() ?? null,
+      });
+    }
+
+    // Revoke: disable sharing AND rotate the token so any previously shared URL
+    // is permanently dead, and clear any expiry.
     await prisma.meeting.update({
       where: { id: existing.id },
-      data: { shared: enable, shareId: enable ? shareId : existing.shareId },
+      data: { shared: false, shareId: `s_${nanoid(12)}`, shareExpiresAt: null },
     });
-    res.json({ shared: enable, shareId: enable ? shareId : null });
+    await writeAudit(req.auth!.workspaceId, req.auth!.userId, "meeting_share_revoked", {
+      meetingId: existing.id,
+    });
+    res.json({ shared: false, shareId: null, shareExpiresAt: null });
   })
 );
 

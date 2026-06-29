@@ -22,6 +22,9 @@ export const env = {
   UPLOAD_TRANSCRIPTION_PROVIDER: uploadTranscriptionProvider,
   STRIPE_SECRET_KEY: process.env.STRIPE_SECRET_KEY ?? "",
   STRIPE_WEBHOOK_SECRET: process.env.STRIPE_WEBHOOK_SECRET ?? "",
+  // Stripe Price IDs per paid plan (required for real checkout of that plan).
+  STRIPE_PRICE_PRO: process.env.STRIPE_PRICE_PRO ?? "",
+  STRIPE_PRICE_BUSINESS: process.env.STRIPE_PRICE_BUSINESS ?? "",
   ZOOM_CLIENT_ID: process.env.ZOOM_CLIENT_ID ?? "",
   ZOOM_CLIENT_SECRET: process.env.ZOOM_CLIENT_SECRET ?? "",
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? "",

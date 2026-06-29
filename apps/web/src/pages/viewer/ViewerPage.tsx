@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import axios from "axios";
+import { API_BASE_URL } from "@/lib/api";
 import {
   Radio,
   CheckCircle2,
@@ -27,28 +28,44 @@ export function ViewerPage() {
 
   useEffect(() => {
     let alive = true;
+    let timer: ReturnType<typeof setInterval> | null = null;
+    const stopPolling = () => {
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+    };
     const load = async () => {
       try {
-        const { data } = await axios.get(`/api/sessions/${shareId}`);
+        // Use the configured API base so the public viewer works on a split
+        // Vercel(web) + Railway(api) deploy (not just same-origin).
+        const { data } = await axios.get(`${API_BASE_URL}/sessions/${shareId}`);
         if (!alive) return;
         setSession(data.session);
         setStatus("ok");
+        // Once the session has ended, transcript/summary are final — stop polling
+        // instead of hammering the server forever for an unchanging payload.
+        if (data.session?.ended) stopPolling();
       } catch (err) {
         if (!alive) return;
-        // 404 → invalid/expired link; anything else → transient error.
+        // 404 → invalid/expired/revoked link; anything else → transient error.
         if (axios.isAxiosError(err) && err.response?.status === 404) {
           setStatus("notfound");
+          stopPolling();
         } else {
           setStatus((prev) => (prev === "ok" ? "ok" : "error"));
         }
       }
     };
     load();
-    // Poll while live for near-real-time viewing.
-    const t = setInterval(load, 3000);
+    // Poll for near-real-time updates while the session is live. SSE/WebSocket
+    // push would be lower-latency, but the public viewer is unauthenticated and
+    // read-only; a lightweight 3s poll that self-terminates on end keeps the
+    // surface small and avoids exposing a socket to anonymous clients.
+    timer = setInterval(load, 3000);
     return () => {
       alive = false;
-      clearInterval(t);
+      stopPolling();
     };
   }, [shareId]);
 

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { asyncHandler } from "../utils/http.js";
 import { requireAuth } from "../middleware/auth.js";
+import { buildReferences, buildSnippet } from "../services/search.service.js";
 
 const router = Router();
 router.use(requireAuth);
@@ -62,15 +63,21 @@ router.get(
       }),
     ]);
 
+    // Citation-like references: where each answer/match came from (meeting +
+    // speaker + quoted snippet), so the UI can cite sources inside Aurora.
+    const references = buildReferences(q, segments, summaries);
+
     res.json({
       query: q,
       meetings: meetings.map((m) => ({
         ...m,
         createdAt: m.createdAt.toISOString(),
       })),
-      segments,
+      // Attach a match-centered snippet to each transcript hit.
+      segments: segments.map((s) => ({ ...s, snippet: buildSnippet(s.text, q) })),
       actionItems,
       summaries,
+      references,
     });
   })
 );

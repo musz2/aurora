@@ -1,9 +1,11 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { hasOpenAI } from "../config/env.js";
 import {
   extractTranscriptQuestions,
   finalizationLabel,
   finalizationSource,
+  finalizeMeeting,
   summarizeSpeakers,
 } from "./meeting-finalization.service.js";
 import type { TranscriptLine } from "./ai.service.js";
@@ -52,4 +54,28 @@ test("extractTranscriptQuestions pulls de-duplicated questions", () => {
   assert.ok(questions.some((q) => q.includes("migration risk")));
   // No non-question statements leak in
   assert.ok(questions.every((q) => q.endsWith("?")));
+});
+
+test("finalizeMeeting in demo mode produces a complete payload without AI keys", async () => {
+  const result = await finalizeMeeting({
+    title: "Launch sync",
+    transcript,
+    demoMode: true,
+    durationSeconds: 120,
+  });
+  // Every completed meeting gets summary + decisions + action items + follow-up
+  // + key questions + speaker stats, even with no provider configured.
+  assert.ok(result.summary.overview.length > 0);
+  assert.ok(Array.isArray(result.summary.decisions));
+  assert.ok(result.summary.followUpEmail.length > 0);
+  assert.ok(result.actionItems.length > 0);
+  assert.ok(result.questions.length > 0);
+  assert.ok(result.speakerSummaries.length === 2);
+  assert.equal(result.durationSeconds, 120);
+  // Honest source labelling: mock only when there is no real key.
+  if (!hasOpenAI) {
+    assert.equal(result.source, "mock");
+    assert.equal(result.mock, true);
+    assert.match(result.label, /not real AI/i);
+  }
 });

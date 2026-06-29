@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   FORBIDDEN_SHARED_KEYS,
   assertNoPrivateLeak,
+  isShareActive,
   sanitizePublicSession,
   type MeetingForSharing,
 } from "./shared-viewer.service.js";
@@ -94,4 +95,51 @@ test("assertNoPrivateLeak throws when a forbidden key is present", () => {
     () => assertNoPrivateLeak({ recordingUrl: "x" }),
     /leaked private field/
   );
+});
+
+test("isShareActive honors revoke and expiry", () => {
+  const now = new Date("2026-06-29T12:00:00.000Z");
+  // Revoked → inactive regardless of expiry.
+  assert.equal(isShareActive({ shared: false }, now), false);
+  // Shared, no expiry → active.
+  assert.equal(isShareActive({ shared: true }, now), true);
+  // Shared, future expiry → active.
+  assert.equal(
+    isShareActive({ shared: true, shareExpiresAt: "2026-06-29T13:00:00.000Z" }, now),
+    true
+  );
+  // Shared, past expiry → inactive.
+  assert.equal(
+    isShareActive({ shared: true, shareExpiresAt: "2026-06-29T11:00:00.000Z" }, now),
+    false
+  );
+  // Accepts Date instances too.
+  assert.equal(
+    isShareActive({ shared: true, shareExpiresAt: new Date("2026-06-29T11:00:00.000Z") }, now),
+    false
+  );
+});
+
+test("viewer payload never contains private assistant suggestions or notes", () => {
+  // Source row deliberately carries private host-only assistant data. The public
+  // viewer must structurally drop it — proving the Cluely-style copilot output
+  // can never reach a shared viewer.
+  const withPrivateAssist = {
+    ...baseMeeting,
+    privateAssistSuggestions: [
+      { suggestion: "Pitch the enterprise tier now", confidence: "high" },
+    ],
+    privateNotes: ["Champion is the VP, not the manager"],
+  };
+  const out = sanitizePublicSession(withPrivateAssist, "public-token") as unknown as Record<
+    string,
+    unknown
+  >;
+  assert.ok(!("privateAssistSuggestions" in out));
+  assert.ok(!("privateNotes" in out));
+  // No nested value should carry the private suggestion text either.
+  const serialized = JSON.stringify(out);
+  assert.ok(!serialized.includes("Pitch the enterprise tier now"));
+  assert.ok(!serialized.includes("Champion is the VP"));
+  assert.doesNotThrow(() => assertNoPrivateLeak(out));
 });

@@ -1,6 +1,15 @@
 import OpenAI from "openai";
 import { env, hasOpenAI } from "../config/env.js";
 import { HttpError } from "../utils/http.js";
+import {
+  buildStructuredSuggestion,
+  CONFIDENCE_LEVELS,
+  type AssistantContext,
+  type AssistantIntent,
+  type AssistantMode,
+  type Confidence,
+  type StructuredSuggestion,
+} from "./private-assistant.service.js";
 
 const client = hasOpenAI ? new OpenAI({ apiKey: env.OPENAI_API_KEY }) : null;
 
@@ -210,30 +219,85 @@ export async function answerMeetingQuestion(
   }
 }
 
-export async function generateLiveSuggestion(
-  question: string,
-  transcriptContext: string
-): Promise<string> {
-  if (!client) throw aiNotConfigured("Live private assistant");
+function coerceConfidence(value: unknown): Confidence {
+  return (CONFIDENCE_LEVELS as readonly string[]).includes(value as string)
+    ? (value as Confidence)
+    : "medium";
+}
+
+/**
+ * Host-only live copilot. Returns a STRUCTURED suggestion (answer + talking points
+ * + follow-up + risk + next step + confidence). Honest about source:
+ *   - real OpenAI when configured → { configured: true }
+ *   - demo/mock when no key + demoMode → deterministic structured fallback
+ *   - real meeting + no key → throws (no faked output)
+ *
+ * Never suggests hiding the recording or evading participants (consent-first).
+ */
+export async function generateStructuredLiveSuggestion(params: {
+  question: string;
+  mode: AssistantMode;
+  intent: AssistantIntent;
+  context: AssistantContext;
+  demoMode: boolean;
+}): Promise<{ suggestion: StructuredSuggestion; configured: boolean }> {
+  const fallback = (): StructuredSuggestion =>
+    buildStructuredSuggestion({
+      mode: params.mode,
+      question: params.question,
+      intent: params.intent,
+      context: params.context,
+    });
+
+  if (!client) {
+    if (params.demoMode) return { suggestion: fallback(), configured: false };
+    throw aiNotConfigured("Live private assistant");
+  }
+
   try {
+    const ctx = params.context;
     const res = await client.chat.completions.create({
       model: MODEL,
+      response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
-          content:
-            "You are Aurora's private live assistant helping the user during a meeting. Give a brief, helpful suggested answer (1-3 sentences). Never suggest hiding the recording.",
+          content: `You are Aurora's PRIVATE, host-only live meeting copilot in "${params.mode}" mode. You are consent-first: NEVER suggest hiding the recording, disabling indicators, or evading participants. Reply ONLY as JSON with keys: "answer" (1-2 sentences the host can say), "talkingPoints" (2-4 short strings), "followUpQuestion" (string), "risk" (a brief caution), "nextStep" (string), "confidence" ("low"|"medium"|"high").`,
         },
         {
           role: "user",
-          content: `Recent transcript:\n${transcriptContext}\n\nUser asks privately: ${question}`,
+          content: `Intent: ${params.intent}\nMeeting: ${ctx.meetingTitle ?? "Untitled"}\nSpeakers: ${(ctx.speakerNames ?? []).join(", ")}\nVocabulary: ${(ctx.vocabulary ?? []).join(", ")}\nHost private notes: ${(ctx.privateNotes ?? []).join(" | ")}\nRecent transcript:\n${ctx.recentTranscript ?? ""}\n\nHost asks privately: ${params.question}`,
         },
       ],
     });
-    const suggestion = res.choices[0]?.message?.content;
-    if (!suggestion) throw new Error("OpenAI returned an empty response");
-    return suggestion;
-  } catch {
+    const content = res.choices[0]?.message?.content;
+    if (!content) throw new Error("OpenAI returned an empty response");
+    const parsed = JSON.parse(content) as Partial<StructuredSuggestion>;
+    const base = fallback();
+    return {
+      suggestion: {
+        mode: params.mode,
+        intent: params.intent,
+        question: params.question,
+        answer: typeof parsed.answer === "string" ? parsed.answer : base.answer,
+        talkingPoints:
+          Array.isArray(parsed.talkingPoints) && parsed.talkingPoints.length
+            ? parsed.talkingPoints.map(String)
+            : base.talkingPoints,
+        followUpQuestion:
+          typeof parsed.followUpQuestion === "string"
+            ? parsed.followUpQuestion
+            : base.followUpQuestion,
+        risk: typeof parsed.risk === "string" ? parsed.risk : base.risk,
+        nextStep:
+          typeof parsed.nextStep === "string" ? parsed.nextStep : base.nextStep,
+        confidence: coerceConfidence(parsed.confidence),
+      },
+      configured: true,
+    };
+  } catch (err) {
+    if (params.demoMode) return { suggestion: fallback(), configured: false };
+    if (err instanceof HttpError) throw err;
     throw new HttpError(502, "AI generation failed. No mock output was saved.");
   }
 }
@@ -347,11 +411,4 @@ function mockChatAnswer(
       snippet: c.text.slice(0, 160) + (c.text.length > 160 ? "…" : ""),
     })),
   };
-}
-
-function mockLiveSuggestion(question: string): string {
-  return `Suggested response: Acknowledge the point about "${question.slice(
-    0,
-    60
-  )}", share the relevant context from earlier in the meeting, and propose a concrete next step with an owner and a date.`;
 }

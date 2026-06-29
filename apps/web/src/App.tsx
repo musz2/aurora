@@ -24,6 +24,7 @@ import { DashboardHome } from "@/pages/app/DashboardHome";
 import { MeetingsPage } from "@/pages/app/MeetingsPage";
 import { MeetingDetailPage } from "@/pages/app/MeetingDetailPage";
 import { LiveMeetingPage } from "@/pages/app/LiveMeetingPage";
+import { CopilotPage } from "@/pages/app/CopilotPage";
 import { ChatPage } from "@/pages/app/ChatPage";
 import { ActionItemsPage } from "@/pages/app/ActionItemsPage";
 import { SearchPage } from "@/pages/app/SearchPage";
@@ -76,6 +77,7 @@ export function App() {
         <Route path="meetings" element={<MeetingsPage />} />
         <Route path="meetings/:id" element={<MeetingDetailPage />} />
         <Route path="live" element={<LiveMeetingPage />} />
+        <Route path="copilot" element={<CopilotPage />} />
         <Route path="chat" element={<ChatPage />} />
         <Route path="action-items" element={<ActionItemsPage />} />
         <Route path="search" element={<SearchPage />} />

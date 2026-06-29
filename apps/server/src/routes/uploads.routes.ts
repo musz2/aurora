@@ -12,7 +12,8 @@ import {
   generateMeetingSummary,
 } from "../services/ai.service.js";
 import { env } from "../config/env.js";
-import { trackUsage } from "../services/usage.service.js";
+import { canUpload, trackUsage } from "../services/usage.service.js";
+import { HttpError } from "../utils/http.js";
 import { createUploadedTranscriptionProvider } from "../services/uploaded-transcription.provider.js";
 
 const router = Router();
@@ -81,9 +82,12 @@ async function processUpload(
       });
     }
 
+    // Demo uploads must finalize without OpenAI: pass the upload's demoMode
+    // through so summary/action-item generation falls back to sample output
+    // instead of throwing "not configured". Real uploads still require keys.
     const [summary, items] = await Promise.all([
-      generateMeetingSummary(meeting.title, lines, [], { demoMode: false }),
-      extractActionItems(lines, { demoMode: false }),
+      generateMeetingSummary(meeting.title, lines, [], { demoMode }),
+      extractActionItems(lines, { demoMode }),
     ]);
 
     await prisma.meetingSummary.create({
@@ -139,6 +143,11 @@ const handler = asyncHandler(async (req, res) => {
   const ext = path.extname(req.file.originalname).toLowerCase();
   if (!ALLOWED.includes(ext)) {
     throw badRequest(`Unsupported format. Allowed: ${ALLOWED.join(", ")}`);
+  }
+  // Enforce the plan's lifetime import cap before doing any processing work.
+  const allowance = await canUpload(req.auth!.workspaceId);
+  if (!allowance.allowed) {
+    throw new HttpError(402, allowance.reason ?? "Upload limit reached.");
   }
   const demoMode = req.body?.mode === "demo";
   const meeting = await processUpload(

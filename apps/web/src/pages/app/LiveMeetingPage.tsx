@@ -254,6 +254,7 @@ export function LiveMeetingPage() {
           suggestion: s.suggestion,
           configured: s.configured !== false,
           mode: s.mode,
+          confidence: s.confidence ?? s.structured?.confidence,
         },
         ...prev,
       ])

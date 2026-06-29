@@ -54,6 +54,24 @@ function toIso(value: Date | string | null): string | null {
   return value instanceof Date ? value.toISOString() : value;
 }
 
+/**
+ * Whether a share link should currently grant viewer access. A link is active
+ * only when sharing is enabled AND it has not passed its optional expiry. Pure
+ * so the viewer route and tests can reason about revoke/expiry without a DB.
+ */
+export function isShareActive(
+  meeting: { shared?: boolean; shareExpiresAt?: Date | string | null },
+  now: Date = new Date()
+): boolean {
+  if (!meeting.shared) return false;
+  if (!meeting.shareExpiresAt) return true;
+  const expires =
+    meeting.shareExpiresAt instanceof Date
+      ? meeting.shareExpiresAt
+      : new Date(meeting.shareExpiresAt);
+  return expires.getTime() > now.getTime();
+}
+
 function sanitizeSegments(
   segments: MeetingForSharing["segments"]
 ): SharedTranscriptSegmentDto[] {

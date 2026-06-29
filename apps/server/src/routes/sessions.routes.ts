@@ -1,7 +1,11 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { asyncHandler, notFound } from "../utils/http.js";
-import { sanitizePublicSession } from "../services/shared-viewer.service.js";
+import {
+  isShareActive,
+  sanitizePublicSession,
+} from "../services/shared-viewer.service.js";
+import { writeAudit } from "../services/audit.service.js";
 
 const router = Router();
 
@@ -18,8 +22,13 @@ router.get(
       where: { shareId: req.params.shareId, shared: true },
       select: {
         id: true,
+        // workspaceId is selected for server-side audit only; it is NEVER copied
+        // into the public payload by sanitizePublicSession (allow-list).
+        workspaceId: true,
         title: true,
         status: true,
+        shared: true,
+        shareExpiresAt: true,
         startedAt: true,
         endedAt: true,
         participants: true,
@@ -39,6 +48,14 @@ router.get(
       },
     });
     if (!meeting) throw notFound("Session not found or not shared");
+    // Honor share revoke + expiry: a revoked or expired link must not resolve.
+    if (!isShareActive(meeting)) throw notFound("This share link is no longer active");
+
+    // Viewer access audit (no auth user — system-recorded against the workspace).
+    await writeAudit(meeting.workspaceId, null, "session_viewed", {
+      meetingId: meeting.id,
+      shareId: req.params.shareId,
+    });
 
     // All public-facing fields go through the sanitization service (allow-list).
     // This guarantees private assistant suggestions/notes can never leak here.

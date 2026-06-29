@@ -61,3 +61,67 @@ export function buildSegmentUpdate(patch: SegmentPatchInput): SegmentUpdate {
   }
   return update;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Final transcript-segment deduplication                                      */
+/*                                                                             */
+/* Live STT (and reconnects) can emit the same finalized utterance more than   */
+/* once: Deepgram occasionally re-sends a final, and a socket reconnect can     */
+/* replay the tail of a turn. Without a guard we would persist + broadcast      */
+/* duplicate segments. These helpers are pure so the socket layer can keep a    */
+/* small in-memory window of recent finals and skip exact/near duplicates.     */
+/* -------------------------------------------------------------------------- */
+
+export interface FinalSegmentKey {
+  speakerName: string;
+  text: string;
+  startTime: number;
+}
+
+/** Collapse whitespace + lowercase so trivial spacing/case differences match. */
+export function normalizeSegmentText(text: string): string {
+  return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+/**
+ * True when `candidate` duplicates one of `recent` finals: same speaker and
+ * same normalized text within `windowSeconds`. Empty/whitespace-only text is
+ * always treated as a duplicate (nothing to persist).
+ */
+export function isDuplicateFinalSegment(
+  candidate: FinalSegmentKey,
+  recent: FinalSegmentKey[],
+  windowSeconds = 12
+): boolean {
+  const normalized = normalizeSegmentText(candidate.text);
+  if (!normalized) return true;
+  return recent.some(
+    (r) =>
+      r.speakerName === candidate.speakerName &&
+      normalizeSegmentText(r.text) === normalized &&
+      Math.abs(r.startTime - candidate.startTime) <= windowSeconds
+  );
+}
+
+/**
+ * Bounded rolling window of recently persisted finals, used by the live socket
+ * to dedupe without unbounded memory growth. Not persistent — one per session.
+ */
+export class FinalSegmentWindow {
+  private items: FinalSegmentKey[] = [];
+  constructor(private readonly max = 40, private readonly windowSeconds = 12) {}
+
+  /** Returns false (and records) for a new segment, true if it is a duplicate. */
+  isDuplicate(candidate: FinalSegmentKey): boolean {
+    if (isDuplicateFinalSegment(candidate, this.items, this.windowSeconds)) {
+      return true;
+    }
+    this.items.push(candidate);
+    if (this.items.length > this.max) this.items.shift();
+    return false;
+  }
+
+  reset(): void {
+    this.items = [];
+  }
+}

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import axios from "axios";
+import { api } from "./api";
 import type { PlanId, PlanLimits } from "@aurora/shared";
 
 export interface AppConfig {
@@ -23,7 +23,10 @@ const FALLBACK: AppConfig = {
 export function useConfig() {
   const { data } = useQuery({
     queryKey: ["config"],
-    queryFn: async () => (await axios.get<AppConfig>("/api/config")).data,
+    // Use the shared API client so the request honors VITE_API_URL. A raw
+    // axios.get("/api/config") would hit the web origin and break split
+    // Vercel(web) + Railway(api) deployments. `api` baseURL is already "/api".
+    queryFn: async () => (await api.get<AppConfig>("/config")).data,
     staleTime: 5 * 60_000,
   });
   return data ?? FALLBACK;

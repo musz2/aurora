@@ -143,6 +143,9 @@ model Meeting {
   // Public sharing (viewer/join page). shareId is an unguessable public token.
   shared        Boolean      @default(false)
   shareId       String?      @unique
+  // Optional auto-expiry for a share link. When set and in the past, the viewer
+  // is denied access even though `shared` may still be true.
+  shareExpiresAt DateTime?
   publishedNotes String[]    @default([])
   demoMode     Boolean       @default(false)
   createdById  String

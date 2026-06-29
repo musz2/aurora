@@ -30,18 +30,39 @@ export function BillingPage() {
 
   const checkout = useMutation({
     mutationFn: async (plan: PlanId) =>
-      (await api.post("/billing/checkout", { plan })).data,
-    onSuccess: (_res, plan) => {
+      (await api.post("/billing/checkout", { plan })).data as {
+        mode: "live" | "demo";
+        checkoutUrl: string | null;
+        message: string;
+      },
+    onSuccess: (res, plan) => {
+      // Live: redirect to Stripe — DO NOT change the plan locally; the webhook
+      // applies it only after payment succeeds (no faked plan change).
+      if (res.mode === "live" && res.checkoutUrl) {
+        toast("Redirecting to secure checkout…", "info");
+        window.location.href = res.checkoutUrl;
+        return;
+      }
+      // Demo: plan was switched server-side without payment.
       qc.invalidateQueries({ queryKey: ["billing"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       if (user) setUser({ ...user, plan });
-      toast(
-        data?.stripeEnabled
-          ? "Redirecting to secure checkout…"
-          : "Billing not configured — plan switched in demo mode.",
-        data?.stripeEnabled ? "info" : "info"
-      );
+      toast(res.message ?? "Demo mode: plan switched.", "info");
     },
+    onError: () => toast("Could not start checkout.", "error"),
+  });
+
+  const portal = useMutation({
+    mutationFn: async () =>
+      (await api.post("/billing/portal")).data as { url: string | null; message: string },
+    onSuccess: (res) => {
+      if (res.url) {
+        window.location.href = res.url;
+        return;
+      }
+      toast(res.message ?? "Billing portal unavailable in demo mode.", "info");
+    },
+    onError: () => toast("Could not open billing portal.", "error"),
   });
 
   if (isLoading || !data) {
@@ -106,11 +127,17 @@ export function BillingPage() {
           <p className="mt-3 font-medium text-ink">Payment method</p>
           <p className="mt-1 text-sm text-muted">
             {data.stripeEnabled
-              ? "Visa •••• 4242"
+              ? "Managed securely in Stripe"
               : "No card on file (demo mode)"}
           </p>
-          <Button variant="outline" size="sm" className="mt-4 w-full" disabled>
-            Manage in Stripe
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-4 w-full"
+            disabled={!data.stripeEnabled || portal.isPending}
+            onClick={() => portal.mutate()}
+          >
+            {data.stripeEnabled ? "Manage in Stripe" : "Demo mode"}
           </Button>
         </Card>
       </div>

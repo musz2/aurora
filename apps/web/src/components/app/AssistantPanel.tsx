@@ -20,6 +20,7 @@ export const ASSISTANT_MODES = [
   "Client Call",
   "Daily Standup",
   "Recruiting",
+  "General Meeting",
 ] as const;
 
 export type AssistantMode = (typeof ASSISTANT_MODES)[number];
@@ -30,6 +31,7 @@ export interface Suggestion {
   suggestion: string;
   configured: boolean;
   mode?: AssistantMode;
+  confidence?: "low" | "medium" | "high";
 }
 
 export interface PrivateNote {
@@ -129,13 +131,31 @@ export function AssistantPanel({
                 <div key={s.id} className="rounded-xl border border-black/[0.06] bg-aurora-50/50 p-3">
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-xs font-medium text-aurora-700">“{s.question}”</p>
-                    {!s.configured && (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
-                        Mock
-                      </span>
-                    )}
+                    <div className="flex shrink-0 items-center gap-1">
+                      {s.confidence && (
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-[10px] font-medium",
+                            s.confidence === "high"
+                              ? "bg-emerald-100 text-emerald-700"
+                              : s.confidence === "medium"
+                                ? "bg-amber-100 text-amber-800"
+                                : "bg-black/[0.06] text-muted"
+                          )}
+                        >
+                          {s.confidence}
+                        </span>
+                      )}
+                      {!s.configured && (
+                        <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                          Mock
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <p className="mt-1.5 text-sm leading-relaxed text-ink/80">{s.suggestion}</p>
+                  <p className="mt-1.5 whitespace-pre-wrap text-sm leading-relaxed text-ink/80">
+                    {s.suggestion}
+                  </p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Action
                       icon={Copy}

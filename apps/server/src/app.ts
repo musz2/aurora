@@ -27,6 +27,7 @@ import configRoutes from "./routes/config.routes.js";
 import sessionsRoutes from "./routes/sessions.routes.js";
 import calendarRoutes from "./routes/calendar.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
+import { billingWebhookHandler } from "./routes/billing.routes.js";
 
 export function createApp() {
   const app = express();
@@ -53,6 +54,14 @@ export function createApp() {
       credentials: true,
     })
   );
+  // Stripe webhook needs the RAW body for signature verification, so it must be
+  // registered before the JSON body parser. It is public (Stripe-signed, no auth).
+  app.post(
+    "/api/billing/webhook",
+    express.raw({ type: "application/json" }),
+    billingWebhookHandler
+  );
+
   app.use(express.json({ limit: "5mb" }));
 
   const apiLimiter = rateLimit({
