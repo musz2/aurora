@@ -24,11 +24,8 @@ server.on("error", (err) => {
 
 // Bind to 0.0.0.0 so the server is reachable inside containers (Railway/Docker).
 server.listen(env.PORT, "0.0.0.0", () => {
-  if (isProduction) {
-    console.log(
-      `Aurora.ai API listening on port ${env.PORT} (NODE_ENV=production)`
-    );
-  } else {
+  console.log(`Aurora server starting on 0.0.0.0:${env.PORT}`);
+  if (!isProduction) {
     console.log(`\n  Aurora.ai API ready`);
     console.log(`  → REST:      http://localhost:${env.PORT}/api`);
     console.log(`  → WebSocket: ws://localhost:${env.PORT}/ws`);
