@@ -74,6 +74,7 @@ export function attachSocketServer(server: Server) {
       ws.close();
       return;
     }
+    console.info(`[ws] client connected — userId=${auth.userId}`);
 
     const session: Session = {
       meetingId: "",
@@ -315,7 +316,7 @@ export function attachSocketServer(server: Server) {
       session.receivedPackets = 0;
 
       if (!hasDeepgram) {
-        // Honest error — never fall back to demo transcript in a real session.
+        console.warn(`[ws] DEEPGRAM_API_KEY not set — live STT unavailable for meeting ${meetingId}`);
         send(ws, SOCKET_EVENTS.TRANSCRIPT_ERROR, {
           code: "stt_not_configured",
           message:
@@ -325,6 +326,7 @@ export function attachSocketServer(server: Server) {
         return;
       }
 
+      console.info(`[ws] starting real session — meetingId=${meetingId}`);
       sendStatus({ status: "RECORDING", engine: "deepgram", state: "listening" });
       send(ws, SOCKET_EVENTS.RECORDING_WARNING, {
         message:
@@ -338,24 +340,31 @@ export function attachSocketServer(server: Server) {
       });
 
       session.dg = createLiveTranscription({
-        onOpen: () =>
+        onOpen: () => {
+          console.info(`[ws] Deepgram open — meetingId=${meetingId}`);
           send(ws, SOCKET_EVENTS.DG_STATUS, {
             connected: true,
             connecting: false,
             events: 0,
-          }),
-        onClose: (reason) =>
+          });
+        },
+        onClose: (reason) => {
+          console.warn(`[ws] Deepgram close — meetingId=${meetingId} reason="${reason}" stopped=${session.stopped}`);
+          if (session.stopped) return;
           send(ws, SOCKET_EVENTS.DG_STATUS, {
             connected: false,
             connecting: false,
             events: session.dgEvents,
             reason,
-          }),
-        onError: (message) =>
+          });
+        },
+        onError: (message) => {
+          console.error(`[ws] Deepgram error — meetingId=${meetingId} message="${message}"`);
           send(ws, SOCKET_EVENTS.TRANSCRIPT_ERROR, {
             code: "stt_error",
             message,
-          }),
+          });
+        },
         onTranscript: async (e) => {
           if (session.stopped || session.paused) return;
           session.dgEvents += 1;
@@ -364,7 +373,6 @@ export function attachSocketServer(server: Server) {
           const relStart = e.start;
           if (e.isFinal) {
             const id = await persistFinal(speaker, e.text, relStart);
-            // null = duplicate final (reconnect replay / DG re-send) — skip it.
             if (id !== null) {
               send(ws, SOCKET_EVENTS.TRANSCRIPT_SEGMENT, {
                 id,
@@ -458,6 +466,7 @@ export function attachSocketServer(server: Server) {
     };
 
     const stopAll = () => {
+      console.info(`[ws] stopAll — meetingId=${session.meetingId} packets=${session.receivedPackets} dgEvents=${session.dgEvents}`);
       session.stopped = true;
       clearTimers();
       session.dg?.finish();
@@ -470,7 +479,21 @@ export function attachSocketServer(server: Server) {
         // While paused, drop audio so nothing is transcribed or persisted.
         if (session.paused) return;
         session.receivedPackets += 1;
-        if (session.dg) session.dg.send(raw as Buffer);
+        const buf = raw as Buffer;
+        // Log first chunk and every 100th chunk.
+        if (session.receivedPackets === 1) {
+          console.info(`[ws] first audio chunk received — ${buf.length}B from userId=${auth!.userId}`);
+        } else if (session.receivedPackets % 100 === 0) {
+          console.info(`[ws] audio chunks received — count=${session.receivedPackets}`);
+        }
+        if (session.dg) {
+          if (!session.dg.isOpen()) {
+            console.warn(`[ws] audio chunk #${session.receivedPackets} buffered (Deepgram not open yet)`);
+          }
+          session.dg.send(buf);
+        } else {
+          console.warn(`[ws] audio chunk #${session.receivedPackets} dropped (session.dg is null)`);
+        }
         if (session.receivedPackets % 10 === 0) {
           send(ws, SOCKET_EVENTS.AUDIO_ACK, {
             received: session.receivedPackets,
@@ -560,11 +583,13 @@ export function attachSocketServer(server: Server) {
     });
 
     ws.on("close", () => {
+      console.info(`[ws] client disconnected — userId=${auth!.userId} meetingId=${session.meetingId} packets=${session.receivedPackets}`);
       session.stopped = true;
       clearTimers();
       session.dg?.finish();
     });
-    ws.on("error", () => {
+    ws.on("error", (err) => {
+      console.error(`[ws] client error — userId=${auth!.userId}`, (err as Error).message);
       session.stopped = true;
       clearTimers();
       session.dg?.finish();

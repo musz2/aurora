@@ -134,6 +134,7 @@ export function LiveMeetingPage() {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const meetingIdRef = useRef<string>("");
   const timerRef = useRef<number>();
+  const noAudioTimerRef = useRef<number>();
 
   const { data: usage } = useQuery({
     queryKey: ["usage"],
@@ -148,6 +149,7 @@ export function LiveMeetingPage() {
 
   const cleanup = () => {
     if (timerRef.current) clearInterval(timerRef.current);
+    if (noAudioTimerRef.current) clearTimeout(noAudioTimerRef.current);
     recorderRef.current?.state !== "inactive" && recorderRef.current?.stop();
     mic.stop();
     socketRef.current?.close();
@@ -249,10 +251,18 @@ export function LiveMeetingPage() {
       }
       // Surface an unexpected close reason to the host as an STT error.
       if (!s.connected && !s.connecting && s.reason) {
-        setSttError((prev) => prev ?? `Deepgram ${s.reason}`);
+        const msg =
+          s.reason === "closed (code 1000)"
+            ? "No audio received. Check your microphone and try again."
+            : `Deepgram ${s.reason}`;
+        setSttError((prev) => prev ?? msg);
       }
     });
     socket.on(SOCKET_EVENTS.AUDIO_ACK, (a) => {
+      if (a.received > 0 && noAudioTimerRef.current) {
+        clearTimeout(noAudioTimerRef.current);
+        noAudioTimerRef.current = undefined;
+      }
       if (DEV) setDebug((d) => ({ ...d, packetsReceived: a.received }));
     });
     socket.on(SOCKET_EVENTS.AI_SUGGESTION, (s) =>
@@ -305,6 +315,14 @@ export function LiveMeetingPage() {
     setRecording(true);
     setEngineState(m === "real" ? "listening" : "live");
     timerRef.current = window.setInterval(() => setElapsed((e) => e + 1), 1000);
+    // No-audio detection: if no chunks are acknowledged within 10s, show a hint.
+    if (m === "real") {
+      if (noAudioTimerRef.current) clearTimeout(noAudioTimerRef.current);
+      noAudioTimerRef.current = window.setTimeout(() => {
+        if (!recording) return;
+        setSttError((prev) => prev ?? "No audio received from your microphone. Check your mic permissions and try again.");
+      }, 10000);
+    }
   };
 
   /** Pause/resume the live capture without ending the session. */
@@ -333,6 +351,7 @@ export function LiveMeetingPage() {
 
   const stopRecording = async () => {
     if (timerRef.current) clearInterval(timerRef.current);
+    if (noAudioTimerRef.current) clearTimeout(noAudioTimerRef.current);
     if (recorderRef.current && recorderRef.current.state !== "inactive")
       recorderRef.current.stop();
     socketRef.current?.send(SOCKET_EVENTS.MEETING_STOP, { meetingId: meetingIdRef.current });

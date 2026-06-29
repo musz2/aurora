@@ -44,11 +44,15 @@ const warn = (...a: unknown[]) => console.warn("[deepgram]", ...a);
 export function createLiveTranscription(
   handlers: DeepgramHandlers
 ): LiveSttConnection | null {
-  if (!hasDeepgram) return null;
+  if (!hasDeepgram) {
+    log("DEEPGRAM_API_KEY not configured — live STT unavailable");
+    return null;
+  }
 
   log("initializing SDK + live connection (nova-2, en, webm/opus auto-detect)");
   const deepgram = createClient(env.DEEPGRAM_API_KEY);
 
+  log("calling deepgram.listen.live()…");
   const connection: LiveClient = deepgram.listen.live({
     model: "nova-2",
     language: "en",
@@ -60,14 +64,18 @@ export function createLiveTranscription(
     // No encoding/sample_rate/channels: the browser sends a WebM/Opus container
     // (from MediaRecorder), which Deepgram auto-detects.
   });
+  log("deepgram.listen.live() returned");
 
   let open = false;
   let closed = false;
   const pending: Buffer[] = [];
   let keepAlive: NodeJS.Timeout | null = null;
+  let openFired = false;
 
   const flushPending = () => {
-    if (pending.length) log(`flushing ${pending.length} buffered audio chunk(s)`);
+    if (pending.length) {
+      log(`flushing ${pending.length} buffered audio chunk(s) (${pending.reduce((s, c) => s + c.length, 0)} bytes)`);
+    }
     while (pending.length) {
       const chunk = pending.shift()!;
       try {
@@ -80,6 +88,7 @@ export function createLiveTranscription(
 
   connection.on(LiveTranscriptionEvents.Open, () => {
     open = true;
+    openFired = true;
     log("open event — connection established");
     flushPending();
     keepAlive = setInterval(() => {
@@ -98,7 +107,7 @@ export function createLiveTranscription(
     if (!text) return;
     const isFinal = Boolean(data?.is_final);
     const speakerNum = alt?.words?.[0]?.speaker;
-    log(`transcript event (${isFinal ? "final" : "interim"}):`, text.slice(0, 60));
+    log(`transcript event (#${isFinal ? "final" : "interim"}):`, text.slice(0, 80));
     handlers.onTranscript({
       text,
       isFinal,
@@ -121,9 +130,10 @@ export function createLiveTranscription(
     open = false;
     closed = true;
     if (keepAlive) clearInterval(keepAlive);
+    const code = ev?.code ?? "?";
     const reason =
-      ev?.reason || (ev?.code ? `closed (code ${ev.code})` : "connection closed");
-    log("close event —", reason);
+      ev?.reason || (code ? `closed (code ${code})` : "connection closed");
+    log(`close event — code=${code} reason=${ev?.reason ?? "(none)"}`);
     handlers.onClose(String(reason));
   });
 
@@ -136,21 +146,36 @@ export function createLiveTranscription(
     /* ignore */
   }
 
+  /** Track total bytes sent for logging. */
+  let bytesSent = 0;
+
   return {
     send: (chunk: Buffer) => {
-      if (closed) return;
+      if (closed) {
+        warn(`send() called after close (${chunk.length}B dropped)`);
+        return;
+      }
+      bytesSent += chunk.length;
       if (open) {
         try {
           connection.send(toArrayBuffer(chunk));
         } catch (e) {
-          warn("send failed:", (e as Error).message);
+          warn("send() error:", (e as Error).message);
         }
       } else {
         // Buffer until open so we never lose the WebM header.
-        if (pending.length < 400) pending.push(chunk);
+        if (pending.length < 400) {
+          pending.push(chunk);
+          if (pending.length === 1) {
+            log(`buffering first audio chunk (${chunk.length}B) until Deepgram open`);
+          }
+        } else {
+          warn("pending buffer full (400) — dropping chunk");
+        }
       }
     },
     finish: () => {
+      log(`finish() called (${bytesSent}B sent, ${pending.length} pending)`);
       if (keepAlive) clearInterval(keepAlive);
       try {
         connection.requestClose();
