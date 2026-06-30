@@ -5,7 +5,7 @@
     "dockerfilePath": "apps/server/Dockerfile"
   },
   "deploy": {
-    "predeploy": "pnpm --filter @aurora/server db:deploy",
+    "preDeployCommand": "pnpm --filter @aurora/server db:deploy",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
