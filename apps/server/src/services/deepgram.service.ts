@@ -56,7 +56,7 @@ export function createLiveTranscription(
   const connection: LiveClient = deepgram.listen.live({
     model: "nova-2",
     language: "en",
-    smart_format: true,
+    smart_format: false, // Disabled for lower latency (adds ~100ms processing delay)
     punctuate: true,
     interim_results: true,
     endpointing: 200, // fast finalization after a short pause

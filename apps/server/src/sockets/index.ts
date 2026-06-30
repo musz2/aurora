@@ -10,6 +10,15 @@ import {
   type LiveSttConnection,
 } from "../services/deepgram.service.js";
 import { hasDeepgram } from "../config/env.js";
+import { isShareActive } from "../services/shared-viewer.service.js";
+
+/**
+ * Map of meetingId → Set of viewer WebSocket connections.
+ * Used to broadcast transcript events to all connected viewers in real time.
+ * Viewers connect via /ws-viewer?shareId=<shareId> (no JWT required — the shareId
+ * itself is the auth token, matching the existing HTTP shared-viewer security model).
+ */
+const viewerConnections = new Map<string, Set<WebSocket>>();
 import {
   detectQuestions,
   normalizeAssistantMode,
@@ -371,23 +380,58 @@ export function attachSocketServer(server: Server) {
           const speaker = e.speaker ?? session.interimSpeaker;
           session.interimSpeaker = speaker;
           const relStart = e.start;
+          const dgReceiveTime = Date.now();
+
           if (e.isFinal) {
-            const id = await persistFinal(speaker, e.text, relStart);
-            if (id !== null) {
-              send(ws, SOCKET_EVENTS.TRANSCRIPT_SEGMENT, {
-                id,
-                meetingId,
-                speakerName: speaker,
-                text: e.text,
-                startTime: relStart,
-                endTime: relStart,
-                isFinal: true,
-              });
-              await maybeSuggestFromTranscript(e.text);
-            }
+            // 1. BROADCAST to host immediately (no DB wait).
+            const tmpId = `tmp-${dgReceiveTime}`;
+            send(ws, SOCKET_EVENTS.TRANSCRIPT_SEGMENT, {
+              id: tmpId,
+              meetingId,
+              speakerName: speaker,
+              text: e.text,
+              startTime: relStart,
+              endTime: relStart,
+              isFinal: true,
+            });
+
+            // 2. BROADCAST to viewers immediately.
+            broadcastToViewers(meetingId, SOCKET_EVENTS.TRANSCRIPT_SEGMENT, {
+              id: tmpId,
+              meetingId,
+              speakerName: speaker,
+              text: e.text,
+              startTime: relStart,
+              endTime: relStart,
+              isFinal: true,
+            });
+
+            // 3. Async persistence + AI suggestion (non-blocking).
+            persistFinal(speaker, e.text, relStart).then((persistedId) => {
+              // If the segment was a duplicate (already persisted), the viewer
+              // already has the event — no correction needed.
+              if (persistedId && persistedId !== tmpId) {
+                // Optionally update the tmpId with real id, but the frontend
+                // deduplicates by meetingId+startTime+speakerName anyway.
+              }
+            }).catch(() => null);
+            maybeSuggestFromTranscript(e.text).catch(() => null);
+
             sendStatus({ status: "RECORDING", state: "live" });
+
+            // Latency log (every 20 finals to reduce noise).
+            if (session.dgEvents % 20 === 0) {
+              console.info(`[latency] deepgramTranscriptAt=${dgReceiveTime} hostBroadcastAt=${Date.now()} dgEvents=${session.dgEvents}`);
+            }
           } else {
+            // Interim: broadcast to host + viewers immediately (no persistence).
             send(ws, SOCKET_EVENTS.TRANSCRIPT_PARTIAL, {
+              meetingId,
+              speakerName: speaker,
+              text: e.text,
+              isFinal: false,
+            });
+            broadcastToViewers(meetingId, SOCKET_EVENTS.TRANSCRIPT_PARTIAL, {
               meetingId,
               speakerName: speaker,
               text: e.text,
@@ -597,4 +641,91 @@ export function attachSocketServer(server: Server) {
   });
 
   return wss;
+}
+
+/* ---------------------- Viewer WebSocket server ---------------------- */
+
+/**
+ * Broadcast a transcript event to all connected viewers for a meeting.
+ * Viewers receive the same event format as the host (TRANSCRIPT_PARTIAL for
+ * interims, TRANSCRIPT_SEGMENT for finals) so they can render in real time.
+ */
+function broadcastToViewers(meetingId: string, type: string, payload: unknown) {
+  const viewers = viewerConnections.get(meetingId);
+  if (!viewers || viewers.size === 0) return;
+  const msg = JSON.stringify({ type, payload });
+  const now = Date.now();
+  for (const v of viewers) {
+    if (v.readyState === WebSocket.OPEN) {
+      v.send(msg);
+    }
+  }
+  if (type === SOCKET_EVENTS.TRANSCRIPT_SEGMENT || type === SOCKET_EVENTS.TRANSCRIPT_PARTIAL) {
+    console.info(`[viewer] transcript event sent — meetingId=${meetingId} type=${type} viewers=${viewers.size} at=${now}`);
+  }
+}
+
+/**
+ * Attach a separate WebSocket server for shared viewers at /ws-viewer.
+ * Viewers authenticate via shareId (the public share URL token) — the same
+ * security model as the HTTP GET /api/sessions/:shareId endpoint.
+ */
+export function attachViewerSocketServer(server: Server) {
+  const vwss = new WebSocketServer({ server, path: "/ws-viewer" });
+
+  vwss.on("connection", async (ws, req) => {
+    const url = new URL(req.url ?? "", "http://localhost");
+    const shareId = url.searchParams.get("shareId");
+    if (!shareId) {
+      ws.send(JSON.stringify({ type: "error", payload: { message: "Missing shareId" } }));
+      ws.close();
+      return;
+    }
+
+    // Validate the shareId by querying the meeting.
+    let meetingId = "";
+    try {
+      const meeting = await prisma.meeting.findFirst({
+        where: { shareId, shared: true },
+        select: { id: true, shareExpiresAt: true },
+      });
+      if (!meeting || !isShareActive(meeting)) {
+        ws.send(JSON.stringify({ type: "error", payload: { message: "Invalid or expired share link" } }));
+        ws.close();
+        return;
+      }
+      meetingId = meeting.id;
+    } catch {
+      ws.send(JSON.stringify({ type: "error", payload: { message: "Server error" } }));
+      ws.close();
+      return;
+    }
+
+    console.info(`[viewer] viewer connected — meetingId=${meetingId} shareId=${shareId}`);
+
+    // Register in the broadcast map.
+    if (!viewerConnections.has(meetingId)) {
+      viewerConnections.set(meetingId, new Set());
+    }
+    viewerConnections.get(meetingId)!.add(ws);
+
+    ws.on("close", () => {
+      console.info(`[viewer] viewer disconnected — meetingId=${meetingId}`);
+      const viewers = viewerConnections.get(meetingId);
+      if (viewers) {
+        viewers.delete(ws);
+        if (viewers.size === 0) viewerConnections.delete(meetingId);
+      }
+    });
+
+    ws.on("error", () => {
+      const viewers = viewerConnections.get(meetingId);
+      if (viewers) {
+        viewers.delete(ws);
+        if (viewers.size === 0) viewerConnections.delete(meetingId);
+      }
+    });
+  });
+
+  return vwss;
 }

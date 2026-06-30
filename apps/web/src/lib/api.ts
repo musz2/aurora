@@ -9,6 +9,18 @@ function normalizeApiUrl(raw: string | undefined): string {
 
 export const API_BASE_URL = normalizeApiUrl(import.meta.env.VITE_API_URL);
 
+function normalizeWsUrl(raw: string | undefined): string {
+  if (!raw) {
+    const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+    return `${proto}//${window.location.host}`;
+  }
+  return raw.replace(/\/+$/, "").replace(/^http:/, "ws:").replace(/^https:/, "wss:");
+}
+
+export const WS_BASE_URL = normalizeWsUrl(
+  import.meta.env.VITE_WS_URL || import.meta.env.VITE_API_URL || ""
+);
+
 export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: { "Content-Type": "application/json" },

@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { createApp } from "./app.js";
-import { attachSocketServer } from "./sockets/index.js";
+import { attachSocketServer, attachViewerSocketServer } from "./sockets/index.js";
 import { env, isProduction, validateEnv } from "./config/env.js";
 
 // Fail fast on an invalid/insecure production configuration. In development this
@@ -15,6 +15,7 @@ try {
 const app = createApp();
 const server = createServer(app);
 attachSocketServer(server);
+attachViewerSocketServer(server);
 
 // Surface bind failures explicitly instead of exiting silently.
 server.on("error", (err) => {

@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import axios from "axios";
-import { API_BASE_URL } from "@/lib/api";
+import { API_BASE_URL, WS_BASE_URL } from "@/lib/api";
 import {
   Radio,
   CheckCircle2,
@@ -21,11 +21,29 @@ import type { PublicSessionDto } from "@aurora/shared";
 type Session = PublicSessionDto;
 type Status = "loading" | "ok" | "notfound" | "error";
 
+interface InterimEvent {
+  speakerName: string;
+  text: string;
+}
+
+interface SegmentEvent {
+  id: string;
+  speakerName: string;
+  text: string;
+  startTime: number;
+  isFinal: boolean;
+}
+
 export function ViewerPage() {
   const { shareId } = useParams();
   const [session, setSession] = useState<Session | null>(null);
   const [status, setStatus] = useState<Status>("loading");
+  const [interim, setInterim] = useState<InterimEvent | null>(null);
+  const [segments, setSegments] = useState<SegmentEvent[]>([]);
+  const [wsState, setWsState] = useState<"connecting" | "live" | "disconnected">("disconnected");
+  const wsRef = useRef<WebSocket | null>(null);
 
+  // HTTP polling for initial load + non-transcript data (summary, notes, answers, status).
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setInterval> | null = null;
@@ -37,18 +55,29 @@ export function ViewerPage() {
     };
     const load = async () => {
       try {
-        // Use the configured API base so the public viewer works on a split
-        // Vercel(web) + Railway(api) deploy (not just same-origin).
         const { data } = await axios.get(`${API_BASE_URL}/sessions/${shareId}`);
         if (!alive) return;
         setSession(data.session);
         setStatus("ok");
-        // Once the session has ended, transcript/summary are final — stop polling
-        // instead of hammering the server forever for an unchanging payload.
+
+        // Sync segments from HTTP response on initial load; after that, WebSocket
+        // keeps them current. Only re-sync from HTTP if WebSocket is disconnected.
+        if (wsRef.current?.readyState !== WebSocket.OPEN) {
+          const httpSegments = (data.session?.segments ?? []).map(
+            (s: { id: string; speakerName: string; text: string; startTime: number }) => ({
+              id: s.id,
+              speakerName: s.speakerName,
+              text: s.text,
+              startTime: s.startTime,
+              isFinal: true,
+            })
+          );
+          setSegments(httpSegments);
+        }
+
         if (data.session?.ended) stopPolling();
       } catch (err) {
         if (!alive) return;
-        // 404 → invalid/expired/revoked link; anything else → transient error.
         if (axios.isAxiosError(err) && err.response?.status === 404) {
           setStatus("notfound");
           stopPolling();
@@ -58,16 +87,78 @@ export function ViewerPage() {
       }
     };
     load();
-    // Poll for near-real-time updates while the session is live. SSE/WebSocket
-    // push would be lower-latency, but the public viewer is unauthenticated and
-    // read-only; a lightweight 3s poll that self-terminates on end keeps the
-    // surface small and avoids exposing a socket to anonymous clients.
+    // Poll every 3s for non-transcript updates (summary, notes, answers, ended status).
     timer = setInterval(load, 3000);
     return () => {
       alive = false;
       stopPolling();
     };
   }, [shareId]);
+
+  // WebSocket for live transcript streaming (interim + final segments).
+  useEffect(() => {
+    if (!shareId) return;
+    const wsUrl = `${WS_BASE_URL}/ws-viewer?shareId=${encodeURIComponent(shareId)}`;
+    let ws: WebSocket | null = null;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const connect = () => {
+      setWsState("connecting");
+      ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        setWsState("live");
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const { type, payload } = JSON.parse(event.data);
+          if (type === "transcript:partial") {
+            setInterim({ speakerName: payload.speakerName, text: payload.text });
+          } else if (type === "transcript:segment") {
+            setInterim(null);
+            setSegments((prev) => {
+              if (prev.some((s) => s.id === payload.id)) return prev;
+              return [
+                ...prev,
+                {
+                  id: payload.id,
+                  speakerName: payload.speakerName,
+                  text: payload.text,
+                  startTime: payload.startTime,
+                  isFinal: true,
+                },
+              ];
+            });
+          }
+        } catch {
+          /* ignore malformed */
+        }
+      };
+
+      ws.onclose = () => {
+        setWsState("disconnected");
+        wsRef.current = null;
+        // Auto-reconnect every 3s while the session is live.
+        if (!session?.ended) {
+          reconnectTimer = setTimeout(connect, 3000);
+        }
+      };
+
+      ws.onerror = () => {
+        ws?.close();
+      };
+    };
+
+    connect();
+
+    return () => {
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      ws?.close();
+      wsRef.current = null;
+    };
+  }, [shareId, session?.ended]);
 
   return (
     <div className="min-h-screen bg-[#FAFAFB]">
@@ -85,6 +176,21 @@ export function ViewerPage() {
               {session.live ? "Live now" : session.ended ? "Session ended" : "Processing"}
             </StatusPill>
           )}
+          {wsState === "connecting" && (
+            <StatusPill tone="processing">
+              <Spinner className="h-3 w-3" /> Connecting
+            </StatusPill>
+          )}
+          {wsState === "disconnected" && session?.live && (
+            <StatusPill tone="error">
+              Reconnecting
+            </StatusPill>
+          )}
+          {wsState === "live" && session?.live && (
+            <StatusPill tone="live" pulse>
+              Live
+            </StatusPill>
+          )}
         </div>
       </header>
 
@@ -99,8 +205,8 @@ export function ViewerPage() {
           <StateCard
             icon={AlertCircle}
             iconClass="text-amber-500"
-            title="Can’t reach this session"
-            body="We couldn’t load the shared session. It may be a temporary network issue — this page will keep retrying."
+            title="Can't reach this session"
+            body="We couldn't load the shared session. It may be a temporary network issue — this page will keep retrying."
           />
         )}
 
@@ -152,7 +258,8 @@ export function ViewerPage() {
                     )}
                   </div>
                   <TranscriptPanel
-                    segments={session.segments}
+                    segments={segments}
+                    interim={interim}
                     emptyState={
                       <div className="flex h-full flex-col items-center justify-center text-center">
                         <Radio className="h-8 w-8 text-aurora-400" />
@@ -224,12 +331,12 @@ export function ViewerPage() {
                   session.publishedNotes.length === 0 &&
                   session.publishedAnswers.length === 0 && (
                   <div className="rounded-2xl border border-dashed border-black/10 bg-white p-6 text-center text-sm text-muted">
-                    The host hasn’t published a summary or notes yet.
+                    The host hasn't published a summary or notes yet.
                   </div>
                 )}
 
                 <p className="rounded-xl bg-black/[0.03] px-4 py-3 text-xs leading-relaxed text-muted">
-                  This is a public read-only view. Private notes and Aurora’s
+                  This is a public read-only view. Private notes and Aurora's
                   private assistant are never shared here.
                 </p>
               </div>

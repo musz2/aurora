@@ -318,7 +318,7 @@ export function LiveMeetingPage() {
               console.log("[audio] chunk sent", e.data.size, "bytes", mimeType || "browser default");
           }
         };
-        recorder.start(150); // 150ms chunks for low-latency interim results
+        recorder.start(100); // 100ms chunks for low-latency interim results
         if (DEV) console.info("[audio] MediaRecorder started", mimeType || "browser default");
       } catch (err) {
         toast("Could not start audio recorder on this browser.", "error");
