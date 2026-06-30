@@ -88,7 +88,14 @@ export function getOAuthConfig(provider: OAuthProvider): OAuthConfig {
       clientId: env.ZOOM_CLIENT_ID,
       clientSecret: env.ZOOM_CLIENT_SECRET,
       redirectUri: env.ZOOM_REDIRECT_URI,
-      scopes: ["meeting:read", "meeting:write"],
+      scopes: [
+        "meeting:read:search",
+        "user:read:user",
+        "cloud_recording:read:recording",
+        "cloud_recording:read:list_recording_files",
+        "cloud_recording:read:meeting_transcript",
+        "zoomapp:inmeeting",
+      ],
     },
   };
   return configs[provider];
