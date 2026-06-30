@@ -330,10 +330,11 @@ export function LiveMeetingPage() {
     setEngineState(m === "real" ? "listening" : "live");
     timerRef.current = window.setInterval(() => setElapsed((e) => e + 1), 1000);
     // No-audio detection: if no chunks are acknowledged within 10s, show a hint.
+    // Use a ref to avoid a stale closure on the `recording` state variable.
     if (m === "real") {
       if (noAudioTimerRef.current) clearTimeout(noAudioTimerRef.current);
       noAudioTimerRef.current = window.setTimeout(() => {
-        if (!recording) return;
+        if (recorderRef.current?.state !== "recording") return;
         setSttError((prev) => prev ?? "No audio received from your microphone. Check your mic permissions and try again.");
       }, 10000);
     }
