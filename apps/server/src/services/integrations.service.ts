@@ -21,6 +21,7 @@ import {
   uploadGoogleDriveExport,
   type MeetingWithContent,
 } from "./provider-api.service.js";
+import { syncZoomAccount } from "./zoom.service.js";
 
 export type ProviderConnectionState =
   | "connected"
@@ -315,7 +316,7 @@ export async function runIntegrationAction(params: {
   }
 
   try {
-    if (!params.meeting && ["slack", "google-drive", "hubspot"].includes(params.provider)) {
+    if (!params.meeting && ["slack", "google-drive", "hubspot", "zoom"].includes(params.provider)) {
       const tokens = await getProviderTokens(params.workspaceId, params.provider);
       const privateTokenReady = params.provider === "slack"
         ? Boolean(env.SLACK_BOT_TOKEN)
@@ -383,6 +384,27 @@ export async function runIntegrationAction(params: {
         externalId: posted.messageId,
         message: result,
         lastSyncResult: result,
+      };
+    }
+
+    if (params.provider === "zoom" && params.action === "import-sync") {
+      const tokens = await getProviderTokens(params.workspaceId, "zoom");
+      if (!tokens) throw new HttpError(409, "Zoom is not connected. Configure Zoom OAuth first.");
+      const result = await syncZoomAccount(tokens);
+      await markIntegrationResult({
+        workspaceId: params.workspaceId,
+        provider: params.provider,
+        ok: result.ok,
+        result: result.message,
+      });
+      return {
+        provider: params.provider,
+        action: params.action,
+        mode: "live",
+        ok: true,
+        externalId: `zoom_${Date.now()}`,
+        message: result.message,
+        lastSyncResult: result.message,
       };
     }
 

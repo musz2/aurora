@@ -88,6 +88,7 @@ export function getOAuthConfig(provider: OAuthProvider): OAuthConfig {
       clientId: env.ZOOM_CLIENT_ID,
       clientSecret: env.ZOOM_CLIENT_SECRET,
       redirectUri: env.ZOOM_REDIRECT_URI,
+      scopeSeparator: ",",
       scopes: [
         "meeting:read:search",
         "user:read:user",
@@ -123,7 +124,11 @@ export function buildOAuthUrl(provider: OAuthProvider, state: OAuthState) {
   url.searchParams.set("client_id", config.clientId);
   url.searchParams.set("redirect_uri", config.redirectUri);
   url.searchParams.set("response_type", "code");
-  url.searchParams.set("scope", config.scopes.join(config.scopeSeparator ?? " "));
+  const scopeStr = config.scopes.join(config.scopeSeparator ?? " ");
+  if (provider === "zoom") {
+    console.info(`[zoom] scopes requested: ${scopeStr}`);
+  }
+  url.searchParams.set("scope", scopeStr);
   url.searchParams.set("state", signOAuthState(state));
   for (const [key, value] of Object.entries(config.extraAuthParams ?? {})) {
     url.searchParams.set(key, value);
