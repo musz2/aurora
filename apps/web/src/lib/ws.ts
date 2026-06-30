@@ -34,14 +34,15 @@ export class AuroraSocket {
   private shouldReconnect = true;
   private reconnectAttempts = 0;
   private queue: string[] = [];
-  /** Holds binary chunks ONLY until AUDIO_READY is received. Never flushed on open. */
-  private binaryQueue: (ArrayBuffer | Blob)[] = [];
+  /** Server must send AUDIO_READY before any binary frames are sent. */
+  private audioReady = false;
+  /** Single queue for all binary chunks not yet sent (before AUDIO_READY
+   *  or during a reconnect). Never discarded on close — replayed when
+   *  AUDIO_READY arrives on the new connection. */
+  private pendingBinary: (ArrayBuffer | Blob)[] = [];
   private openPromise: Promise<void>;
   private resolveOpen: (() => void) | null = null;
   private binarySeq = 0;
-  /** Server must send AUDIO_READY before any binary frames are sent. */
-  private audioReady = false;
-  private pendingBinaryAfterReady: (ArrayBuffer | Blob)[] = [];
 
   constructor() {
     this.openPromise = new Promise((resolve) => {
@@ -65,14 +66,11 @@ export class AuroraSocket {
 
     this.ws.onopen = () => {
       this.reconnectAttempts = 0;
-      // CRITICAL: NEVER flush queued binary chunks on open. Old chunks from
-      // a previous connection are stale. Wait for AUDIO_READY from the server
-      // before sending any binary frames. Flushing old chunks immediately after
-      // upgrade causes "Invalid frame header" errors on proxy infrastructures.
-      if (this.binaryQueue.length > 0) {
-        log("open — discarding", this.binaryQueue.length, "stale queued binary chunks (waiting for AUDIO_READY)");
-        this.binaryQueue = [];
-      }
+      // NEVER flush pending binary chunks on open. Old chunks from a previous
+      // connection are held until AUDIO_READY arrives — the server explicitly
+      // signals readiness after session initialization. Flushing immediately
+      // after upgrade causes "Invalid frame header" on proxy infrastructures.
+      log("open —", this.pendingBinary.length, "pending binary chunks held (awaiting AUDIO_READY)");
       log("open — flushing", this.queue.length, "queued text messages");
       this.stateCb?.("open");
       this.queue.forEach((m) => this.ws?.send(m));
@@ -86,14 +84,19 @@ export class AuroraSocket {
       if (typeof e.data === "string") {
         try {
           const { type, payload } = JSON.parse(e.data);
-          // Intercept AUDIO_READY to gate binary sends.
+          // Intercept AUDIO_READY: flush pending binary chunks and mark ready.
           if (type === "audio:ready") {
-            log("server ready for audio — flushing", this.pendingBinaryAfterReady.length, "pending binary chunks");
-            this.audioReady = true;
-            for (const chunk of this.pendingBinaryAfterReady) {
-              this.ws?.send(chunk);
+            const count = this.pendingBinary.length;
+            if (count > 0) {
+              log("AUDIO_READY — flushing", count, "pending binary chunks");
+              for (const chunk of this.pendingBinary) {
+                this.ws?.send(chunk);
+              }
+              this.pendingBinary = [];
+            } else {
+              log("AUDIO_READY — no pending chunks");
             }
-            this.pendingBinaryAfterReady = [];
+            this.audioReady = true;
           }
           this.handlers.get(type)?.forEach((h) => h(payload));
         } catch {
@@ -106,16 +109,8 @@ export class AuroraSocket {
     this.ws.onclose = (ev) => {
       log("close code=" + ev.code + " reason=" + (ev.reason || "(none)") + " willReconnect=" + this.shouldReconnect);
       this.stateCb?.("closed");
-      // Discard all queued binary — stale chunks are never replayed.
-      if (this.binaryQueue.length > 0) {
-        log("discarding", this.binaryQueue.length, "stale binary chunks on close");
-        this.binaryQueue = [];
-      }
-      if (this.pendingBinaryAfterReady.length > 0) {
-        log("discarding", this.pendingBinaryAfterReady.length, "pending binary chunks on close");
-        this.pendingBinaryAfterReady = [];
-      }
-      this.audioReady = false;
+      // Keep pendingBinary for replay on reconnect. audioReady is reset
+      // in connect(), so chunks will re-queue until next AUDIO_READY.
       if (this.shouldReconnect && this.reconnectAttempts < 6) {
         this.reconnectAttempts += 1;
         this.stateCb?.("reconnecting");
@@ -159,22 +154,33 @@ export class AuroraSocket {
       return;
     }
     this.binarySeq += 1;
+    const size = buffer instanceof Blob ? buffer.size : buffer.byteLength;
+
+    // Not yet cleared by server — queue for later flush.
     if (!this.audioReady) {
-      log("binary queue held until ready (seq=" + this.binarySeq + " size=" + (buffer instanceof Blob ? buffer.size : buffer.byteLength) + ")");
-      this.pendingBinaryAfterReady.push(buffer);
-      if (this.pendingBinaryAfterReady.length > 400) {
-        warn("pending binary queue full (400) — dropping chunk");
-        this.pendingBinaryAfterReady.shift();
+      log("binary queue held (seq=" + this.binarySeq + " size=" + size + ") awaiting AUDIO_READY");
+      this.pendingBinary.push(buffer);
+      if (this.pendingBinary.length > 400) {
+        warn("pending binary queue full (400) — dropping oldest chunk");
+        this.pendingBinary.shift();
       }
       return;
     }
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      log("binary send seq=" + this.binarySeq + " size=" + (buffer instanceof Blob ? buffer.size : buffer.byteLength));
-      this.ws.send(buffer);
-    } else {
-      log("binary queue held (socket not open, seq=" + this.binarySeq + ")");
-      this.binaryQueue.push(buffer);
+
+    // Server is ready, but socket may not be open (disconnect during recording).
+    if (this.ws?.readyState !== WebSocket.OPEN) {
+      log("binary queue held (seq=" + this.binarySeq + " size=" + size + ") socket not open, awaiting reconnect + AUDIO_READY");
+      this.pendingBinary.push(buffer);
+      if (this.pendingBinary.length > 400) {
+        warn("pending binary queue full (400) — dropping oldest chunk");
+        this.pendingBinary.shift();
+      }
+      return;
     }
+
+    // Full speed: server ready, socket open.
+    log("binary send seq=" + this.binarySeq + " size=" + size);
+    this.ws.send(buffer);
   }
 
   get ready() {
@@ -187,8 +193,7 @@ export class AuroraSocket {
     this.ws = null;
     this.handlers.clear();
     this.queue = [];
-    this.binaryQueue = [];
-    this.pendingBinaryAfterReady = [];
+    this.pendingBinary = [];
     this.binarySeq = 0;
     this.audioReady = false;
     log("closed (shouldReconnect=false)");
