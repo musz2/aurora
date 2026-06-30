@@ -33,6 +33,12 @@ import { billingWebhookHandler } from "./routes/billing.routes.js";
 export function createApp() {
   const app = express();
 
+  // Trust the first proxy (Railway, Vercel, or any reverse proxy) so that
+  // express-rate-limit and other middleware correctly read the real client IP
+  // from X-Forwarded-For. Without this Railway logs ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+  // and OAuth callbacks (Zoom, etc.) can fail before reaching the route handler.
+  app.set("trust proxy", 1);
+
   app.use(helmet({ crossOriginResourcePolicy: false }));
 
   const allowedOrigins = getAllowedOrigins();
