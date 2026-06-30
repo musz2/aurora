@@ -72,7 +72,18 @@ export function attachSocketServer(server: Server) {
   // trigger "Invalid frame header" errors when compression negotiation or
   // proxy frame handling introduces framing corruption. Disabling compression
   // eliminates this entire class of WebSocket protocol failures.
-  const wss = new WebSocketServer({ server, path: "/ws", perMessageDeflate: false });
+  // Use noServer + a path-scoped upgrade handler instead of the { server, path }
+  // option. The viewer server (/ws-viewer) shares the same HTTP server; with the
+  // `server` option BOTH WebSocketServers attach an 'upgrade' listener, and the
+  // non-matching one calls abortHandshake() on a socket the other already upgraded
+  // — corrupting the WebSocket stream ("RSV1 must be clear" on the first frame).
+  // Routing each upgrade to exactly one server by path avoids that corruption.
+  const wss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
+  server.on("upgrade", (req, socket, head) => {
+    const pathname = new URL(req.url ?? "", "http://localhost").pathname;
+    if (pathname !== "/ws") return; // not ours — leave it for the viewer handler
+    wss.handleUpgrade(req, socket, head, (ws) => wss.emit("connection", ws, req));
+  });
 
   wss.on("connection", (ws, req) => {
     let auth: TokenPayload | null = null;
@@ -740,7 +751,14 @@ function broadcastToViewers(meetingId: string, type: string, payload: unknown) {
  * security model as the HTTP GET /api/sessions/:shareId endpoint.
  */
 export function attachViewerSocketServer(server: Server) {
-  const vwss = new WebSocketServer({ server, path: "/ws-viewer" });
+  // noServer + path-scoped upgrade routing (see attachSocketServer above) so this
+  // viewer server never aborts a handshake the /ws server already completed.
+  const vwss = new WebSocketServer({ noServer: true, perMessageDeflate: false });
+  server.on("upgrade", (req, socket, head) => {
+    const pathname = new URL(req.url ?? "", "http://localhost").pathname;
+    if (pathname !== "/ws-viewer") return; // not ours — leave it for the /ws handler
+    vwss.handleUpgrade(req, socket, head, (ws) => vwss.emit("connection", ws, req));
+  });
 
   vwss.on("connection", async (ws, req) => {
     const url = new URL(req.url ?? "", "http://localhost");
