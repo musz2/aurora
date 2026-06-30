@@ -608,7 +608,11 @@ export function attachSocketServer(server: Server) {
           session.stopped = false;
           session.paused = false;
           if (meetingId) {
-            await prisma.meeting
+            // Fire-and-forget: NEVER gate the real-time AUDIO_READY handshake on
+            // a DB write. A cold Prisma connection or pool latency between the API
+            // and Postgres can exceed the client's 10s readiness timeout and cause
+            // "Server did not confirm audio readiness" even though STT is fine.
+            void prisma.meeting
               .update({
                 where: { id: meetingId },
                 data: {
