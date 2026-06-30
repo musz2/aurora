@@ -69,17 +69,23 @@ interface DebugInfo {
 }
 
 const DEV = import.meta.env.DEV;
+const log = (...a: unknown[]) => { if (DEV) console.info("[RECORDER]", ...a); };
 
 function pickMimeType(): string {
   const candidates = [
     "audio/webm;codecs=opus",
     "audio/webm",
     "audio/ogg;codecs=opus",
+    "audio/mp4;codecs=mp4a.40.2",
+    "audio/mp4",
   ];
   for (const c of candidates) {
-    if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(c))
+    if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(c)) {
+      log("using MIME type:", c);
       return c;
+    }
   }
+  log("no supported MIME type, using browser default");
   return "";
 }
 
@@ -135,6 +141,7 @@ export function LiveMeetingPage() {
   const meetingIdRef = useRef<string>("");
   const timerRef = useRef<number>();
   const noAudioTimerRef = useRef<number>();
+  const packetsSentRef = useRef(0);
 
   const { data: usage } = useQuery({
     queryKey: ["usage"],
@@ -279,6 +286,11 @@ export function LiveMeetingPage() {
       ])
     );
 
+    // Wait for socket to be open before sending MEETING_START or starting
+    // the recorder, so that every message reaches the server in order with
+    // no risk of dropping the first audio chunk.
+    await socket.waitForOpen();
+
     socket.send(SOCKET_EVENTS.MEETING_START, {
       meetingId: meetingIdRef.current,
       mode: m,
@@ -286,57 +298,62 @@ export function LiveMeetingPage() {
     });
 
     // Stream real microphone audio as binary frames (real mode only).
-    // Wait for the socket to open before starting the recorder so that
-    // the first audio chunks are not silently dropped.
     if (m === "real" && stream) {
-      // Ensure the socket is open before we start sending binary audio.
-      // The socket may still be connecting (esp. on a cold connection to
-      // Railway). MEETING_START is queued and will be sent when the socket
-      // opens; we want the same guarantee for binary audio frames.
-      await socket.waitForOpen();
-
       const mimeType = pickMimeType();
       try {
         const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
         recorderRef.current = recorder;
         recorder.onstart = () => {
-          if (DEV) console.info("[recorder] started", mimeType || "browser default");
+          log("started", mimeType || "browser default", "@", stream.id);
         };
         recorder.onerror = () => {
-          if (DEV) console.warn("[recorder] error", recorder.state);
+          console.warn("[RECORDER] error", recorder.state);
         };
         recorder.ondataavailable = (e) => {
-          if (e.data && e.data.size > 0) {
-            socket.sendBinary(e.data);
-            setDebug((d) => ({
-              ...d,
-              packetsSent: d.packetsSent + 1,
-              chunkSize: e.data.size,
-            }));
-            if (DEV && Math.random() < 0.1)
-              // eslint-disable-next-line no-console
-              console.log("[audio] chunk sent", e.data.size, "bytes", mimeType || "browser default");
-          }
+          if (!e.data || e.data.size === 0) return;
+          socket.sendBinary(e.data);
+          packetsSentRef.current += 1;
+          setDebug((d) => ({
+            ...d,
+            packetsSent: d.packetsSent + 1,
+            chunkSize: e.data.size,
+          }));
+          if (DEV && Math.random() < 0.1)
+            console.info("[AUDIO] chunk sent", e.data.size, "bytes", mimeType || "browser default");
         };
         recorder.start(100); // 100ms chunks for low-latency interim results
-        if (DEV) console.info("[audio] MediaRecorder started", mimeType || "browser default");
+        log("MediaRecorder started", mimeType || "browser default");
+
+        // Recorder start timeout: if no data within 5s, surface an error.
+        setTimeout(() => {
+          if (recorderRef.current?.state !== "recording") return;
+          if (packetsSentRef.current === 0) {
+            console.warn("[RECORDER] started but no dataavailable after 5s");
+            setSttError((prev) => prev ?? "Microphone opened but no audio data received. Check your mic connection and try again.");
+          }
+        }, 5000);
       } catch (err) {
         toast("Could not start audio recorder on this browser.", "error");
         if (DEV) console.error(err);
       }
     }
 
+    packetsSentRef.current = 0;
     setRecording(true);
     setEngineState(m === "real" ? "listening" : "live");
     timerRef.current = window.setInterval(() => setElapsed((e) => e + 1), 1000);
-    // No-audio detection: if no chunks are acknowledged within 10s, show a hint.
-    // Use a ref to avoid a stale closure on the `recording` state variable.
+    // No-audio detection: if the server never acknowledges any packets within 8s,
+    // show a hint. AUDIO_ACK from the server clears this timer.
     if (m === "real") {
       if (noAudioTimerRef.current) clearTimeout(noAudioTimerRef.current);
       noAudioTimerRef.current = window.setTimeout(() => {
         if (recorderRef.current?.state !== "recording") return;
-        setSttError((prev) => prev ?? "No audio received from your microphone. Check your mic permissions and try again.");
-      }, 10000);
+        if (packetsSentRef.current === 0) {
+          setSttError((prev) => prev ?? "No audio received from your microphone. Check your mic permissions and try again.");
+        } else {
+          setSttError((prev) => prev ?? "Audio sent but server is not acknowledging it. The connection may have been lost.");
+        }
+      }, 8000);
     }
   };
 
@@ -576,14 +593,28 @@ export function LiveMeetingPage() {
   };
 
   const emptyTranscript = () => {
-    if (sttError)
+    if (sttError) {
+      const isMicIssue = sttError.toLowerCase().includes("microphone") || sttError.toLowerCase().includes("mic");
+      const isConnIssue = sttError.toLowerCase().includes("server") || sttError.toLowerCase().includes("connection");
+      const isDgIssue = sttError.toLowerCase().includes("deepgram");
+      const isPermissionIssue = sttError.toLowerCase().includes("permission");
+      const isNoAudioIssue = sttError.toLowerCase().includes("no audio");
       return (
         <div className="flex h-full flex-col items-center justify-center px-6 text-center">
-          <AlertTriangle className="h-9 w-9 text-red-500" />
+          <AlertTriangle className={`h-9 w-9 ${isPermissionIssue ? "text-amber-500" : isMicIssue ? "text-orange-500" : isConnIssue ? "text-red-500" : "text-red-500"}`} />
           <p className="mt-3 font-medium text-ink">Live transcription unavailable</p>
           <p className="mt-1 max-w-sm text-sm text-muted">{sttError}</p>
+          {(isMicIssue || isNoAudioIssue) && (
+            <button
+              onClick={() => { mic.stop(); navigator.mediaDevices.getUserMedia({ audio: true }).then(() => {}).catch(() => {}); }}
+              className="mt-3 text-xs font-medium text-aurora-600 hover:text-aurora-700"
+            >
+              Re-check microphone
+            </button>
+          )}
         </div>
       );
+    }
     if (recording)
       return (
         <div className="flex h-full flex-col items-center justify-center text-center">
@@ -591,6 +622,17 @@ export function LiveMeetingPage() {
             <Loader2 className="h-5 w-5 animate-spin" />
             <span className="font-medium">Listening… speak to begin</span>
           </span>
+          {mic.level > 0.05 && (
+            <span className="mt-2 inline-flex items-center gap-1.5 text-xs text-emerald-600">
+              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+              Mic active
+            </span>
+          )}
+          {mic.silent && (
+            <span className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-xs text-amber-700">
+              No sound detected from your mic. Try speaking louder.
+            </span>
+          )}
           <p className="mt-2 max-w-xs text-sm text-muted">
             {mode === "real"
               ? "Your microphone is live. Say a sentence and it will appear here within a couple of seconds."

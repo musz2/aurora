@@ -5,6 +5,9 @@ import {
 } from "@deepgram/sdk";
 import { env, hasDeepgram } from "../config/env.js";
 
+/** How long to wait for Deepgram's `Open` event before timing out. */
+const DEEPGRAM_OPEN_TIMEOUT_MS = 20_000;
+
 export interface DeepgramTranscriptEvent {
   text: string;
   isFinal: boolean;
@@ -70,6 +73,7 @@ export function createLiveTranscription(
   let closed = false;
   const pending: Buffer[] = [];
   let keepAlive: NodeJS.Timeout | null = null;
+  let openTimeoutTimer: NodeJS.Timeout | null = null;
   let openFired = false;
 
   const flushPending = () => {
@@ -89,6 +93,7 @@ export function createLiveTranscription(
   connection.on(LiveTranscriptionEvents.Open, () => {
     open = true;
     openFired = true;
+    if (openTimeoutTimer) clearTimeout(openTimeoutTimer);
     log("open event — connection established");
     flushPending();
     keepAlive = setInterval(() => {
@@ -123,12 +128,14 @@ export function createLiveTranscription(
   connection.on(LiveTranscriptionEvents.Error, (err: any) => {
     const message = err?.message ?? err?.reason ?? "Deepgram stream error";
     warn("error event:", message);
+    if (openTimeoutTimer) clearTimeout(openTimeoutTimer);
     handlers.onError(message);
   });
 
   connection.on(LiveTranscriptionEvents.Close, (ev: any) => {
     open = false;
     closed = true;
+    if (openTimeoutTimer) clearTimeout(openTimeoutTimer);
     if (keepAlive) clearInterval(keepAlive);
     const code = ev?.code ?? "?";
     const reason =
@@ -136,6 +143,18 @@ export function createLiveTranscription(
     log(`close event — code=${code} reason=${ev?.reason ?? "(none)"}`);
     handlers.onClose(String(reason));
   });
+
+  // Timeout: if Deepgram hasn't opened within the limit, surface an error.
+  // This prevents silent hangs when the network or Deepgram's servers are slow.
+  openTimeoutTimer = setTimeout(() => {
+    if (open || closed) return;
+    warn(`open timeout (${DEEPGRAM_OPEN_TIMEOUT_MS}ms) — Deepgram did not open`);
+    handlers.onError(
+      `Deepgram connection timed out after ${DEEPGRAM_OPEN_TIMEOUT_MS / 1000}s. ` +
+      "Check network connectivity and DEEPGRAM_API_KEY validity."
+    );
+    try { connection.requestClose(); } catch { /* ignore */ }
+  }, DEEPGRAM_OPEN_TIMEOUT_MS);
 
   // Warning event (not in all SDK versions) — subscribe defensively.
   try {
@@ -176,6 +195,7 @@ export function createLiveTranscription(
     },
     finish: () => {
       log(`finish() called (${bytesSent}B sent, ${pending.length} pending)`);
+      if (openTimeoutTimer) clearTimeout(openTimeoutTimer);
       if (keepAlive) clearInterval(keepAlive);
       try {
         connection.requestClose();

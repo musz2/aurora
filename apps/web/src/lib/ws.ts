@@ -3,6 +3,9 @@ import { useAuthStore } from "@/store/auth";
 type Handler = (payload: any) => void;
 export type ConnState = "connecting" | "open" | "closed" | "reconnecting";
 
+const log = (...a: unknown[]) => console.info("[WS CLIENT]", ...a);
+const warn = (...a: unknown[]) => console.warn("[WS CLIENT]", ...a);
+
 function socketUrl(token: string | null): string {
   const configured = import.meta.env.VITE_WS_URL?.trim();
   if (configured) {
@@ -34,6 +37,7 @@ export class AuroraSocket {
   private binaryQueue: (ArrayBuffer | Blob)[] = [];
   private openPromise: Promise<void>;
   private resolveOpen: (() => void) | null = null;
+  private binarySeq = 0;
 
   constructor() {
     this.openPromise = new Promise((resolve) => {
@@ -49,11 +53,14 @@ export class AuroraSocket {
   connect(): AuroraSocket {
     const token = useAuthStore.getState().accessToken;
     const url = socketUrl(token);
+    this.shouldReconnect = true;
     this.stateCb?.(this.reconnectAttempts > 0 ? "reconnecting" : "connecting");
+    log("connecting to", url);
     this.ws = new WebSocket(url);
 
     this.ws.onopen = () => {
       this.reconnectAttempts = 0;
+      log("open — flushing", this.queue.length, "text +", this.binaryQueue.length, "binary queued messages");
       this.stateCb?.("open");
       this.queue.forEach((m) => this.ws?.send(m));
       this.queue = [];
@@ -65,14 +72,19 @@ export class AuroraSocket {
       });
     };
     this.ws.onmessage = (e) => {
-      try {
-        const { type, payload } = JSON.parse(e.data);
-        this.handlers.get(type)?.forEach((h) => h(payload));
-      } catch {
-        /* ignore malformed */
+      if (typeof e.data === "string") {
+        try {
+          const { type, payload } = JSON.parse(e.data);
+          this.handlers.get(type)?.forEach((h) => h(payload));
+        } catch {
+          warn("malformed message:", String(e.data).slice(0, 120));
+        }
+      } else {
+        warn("unexpected binary message from server (ignored)");
       }
     };
-    this.ws.onclose = () => {
+    this.ws.onclose = (ev) => {
+      log("closed — code=" + ev.code + " reason=" + (ev.reason || "(none)") + " willReconnect=" + this.shouldReconnect);
       this.stateCb?.("closed");
       if (this.shouldReconnect && this.reconnectAttempts < 6) {
         this.reconnectAttempts += 1;
@@ -80,7 +92,10 @@ export class AuroraSocket {
         setTimeout(() => this.connect(), Math.min(5000, 800 * this.reconnectAttempts));
       }
     };
-    this.ws.onerror = () => this.ws?.close();
+    this.ws.onerror = (ev) => {
+      warn("error event");
+      this.ws?.close();
+    };
     return this;
   }
 
@@ -98,16 +113,29 @@ export class AuroraSocket {
 
   send(type: string, payload?: Record<string, unknown>) {
     const data = JSON.stringify({ type, payload: payload ?? {} });
-    if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(data);
-    else this.queue.push(data);
+    if (this.ws?.readyState === WebSocket.OPEN) {
+      this.ws.send(data);
+    } else {
+      log("queuing text message:", type);
+      this.queue.push(data);
+    }
   }
 
   /** Send raw audio bytes as a binary frame (queued until socket opens). */
   sendBinary(buffer: ArrayBuffer | Blob) {
+    if (!buffer || (buffer instanceof Blob && buffer.size === 0) || (buffer instanceof ArrayBuffer && buffer.byteLength === 0)) {
+      warn("sendBinary called with empty buffer — skipping");
+      return;
+    }
+    this.binarySeq += 1;
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(buffer);
     } else {
-      if (this.binaryQueue.length < 400) this.binaryQueue.push(buffer);
+      if (this.binaryQueue.length < 400) {
+        this.binaryQueue.push(buffer);
+      } else {
+        warn("binary queue full (400) — dropping chunk #" + this.binarySeq);
+      }
     }
   }
 
@@ -122,5 +150,7 @@ export class AuroraSocket {
     this.handlers.clear();
     this.queue = [];
     this.binaryQueue = [];
+    this.binarySeq = 0;
+    log("closed (shouldReconnect=false)");
   }
 }

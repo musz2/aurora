@@ -335,7 +335,7 @@ export function attachSocketServer(server: Server) {
         return;
       }
 
-      console.info(`[ws] starting real session — meetingId=${meetingId}`);
+      console.info(`[WS SERVER] starting real session — meetingId=${meetingId}`);
       sendStatus({ status: "RECORDING", engine: "deepgram", state: "listening" });
       send(ws, SOCKET_EVENTS.RECORDING_WARNING, {
         message:
@@ -346,6 +346,7 @@ export function attachSocketServer(server: Server) {
         connected: false,
         connecting: true,
         events: 0,
+        reason: "",
       });
 
       session.dg = createLiveTranscription({
@@ -526,23 +527,25 @@ export function attachSocketServer(server: Server) {
         const buf = raw as Buffer;
         // Log first chunk and every 100th chunk.
         if (session.receivedPackets === 1) {
-          console.info(`[ws] first audio chunk received — ${buf.length}B from userId=${auth!.userId}`);
+          console.info(`[WS SERVER] first audio chunk received — ${buf.length}B from userId=${auth!.userId}`);
         } else if (session.receivedPackets % 100 === 0) {
-          console.info(`[ws] audio chunks received — count=${session.receivedPackets}`);
+          console.info(`[WS SERVER] audio chunks received — count=${session.receivedPackets} dgOpen=${session.dg?.isOpen() ?? false}`);
         }
         if (session.dg) {
           if (!session.dg.isOpen()) {
-            console.warn(`[ws] audio chunk #${session.receivedPackets} buffered (Deepgram not open yet)`);
+            if (session.receivedPackets === 1) {
+              console.info(`[WS SERVER] first chunk buffered (Deepgram not open yet) — queueing until Open event`);
+            }
           }
           session.dg.send(buf);
         } else {
-          console.warn(`[ws] audio chunk #${session.receivedPackets} dropped (session.dg is null)`);
+          console.warn(`[WS SERVER] audio chunk #${session.receivedPackets} DROPPED (session.dg is null — MEETING_START may not have been processed yet)`);
         }
-        if (session.receivedPackets % 10 === 0) {
-          send(ws, SOCKET_EVENTS.AUDIO_ACK, {
-            received: session.receivedPackets,
-          });
-        }
+        // Send AUDIO_ACK on EVERY packet so the client's no-audio timer
+        // clears as soon as the server receives the first chunk.
+        send(ws, SOCKET_EVENTS.AUDIO_ACK, {
+          received: session.receivedPackets,
+        });
         return;
       }
 
@@ -576,7 +579,18 @@ export function attachSocketServer(server: Server) {
               .catch(() => null);
           }
           if (mode === "demo") await startDemoSession(meetingId);
-          else startRealSession(meetingId);
+          else {
+            try {
+              startRealSession(meetingId);
+            } catch (err) {
+              console.error(`[WS SERVER] startRealSession threw:`, err);
+              send(ws, SOCKET_EVENTS.TRANSCRIPT_ERROR, {
+                code: "stt_init_error",
+                message: "Failed to initialize speech-to-text engine. Check server logs.",
+              });
+              sendStatus({ status: "RECORDING", state: "error", engine: "none" });
+            }
+          }
           sendLifecycle("recording", { mode });
           break;
         }
@@ -627,13 +641,15 @@ export function attachSocketServer(server: Server) {
     });
 
     ws.on("close", () => {
-      console.info(`[ws] client disconnected — userId=${auth!.userId} meetingId=${session.meetingId} packets=${session.receivedPackets}`);
+      console.info(`[WS SERVER] client disconnected — userId=${auth!.userId} meetingId=${session.meetingId} packets=${session.receivedPackets} dgEvents=${session.dgEvents}`);
+      if (session.stopped) return;
       session.stopped = true;
       clearTimers();
       session.dg?.finish();
     });
     ws.on("error", (err) => {
-      console.error(`[ws] client error — userId=${auth!.userId}`, (err as Error).message);
+      console.error(`[WS SERVER] client error — userId=${auth!.userId}`, (err as Error).message);
+      if (session.stopped) return;
       session.stopped = true;
       clearTimers();
       session.dg?.finish();

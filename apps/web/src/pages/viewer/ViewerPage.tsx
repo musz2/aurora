@@ -18,6 +18,9 @@ import { TranscriptPanel } from "@/components/app/TranscriptPanel";
 import { formatDate } from "@/lib/format";
 import type { PublicSessionDto } from "@aurora/shared";
 
+const log = (...a: unknown[]) => console.info("[VIEWER]", ...a);
+const warn = (...a: unknown[]) => console.warn("[VIEWER]", ...a);
+
 type Session = PublicSessionDto;
 type Status = "loading" | "ok" | "notfound" | "error";
 
@@ -96,11 +99,17 @@ export function ViewerPage() {
   }, [shareId]);
 
   // WebSocket for live transcript streaming (interim + final segments).
+  // Use a ref for `ended` to avoid stale closures in the onclose handler.
+  const endedRef = useRef(session?.ended ?? false);
+  endedRef.current = session?.ended ?? false;
+
   useEffect(() => {
     if (!shareId) return;
     const wsUrl = `${WS_BASE_URL}/ws-viewer?shareId=${encodeURIComponent(shareId)}`;
+    log("connecting to", wsUrl);
     let ws: WebSocket | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let alive = true;
 
     const connect = () => {
       setWsState("connecting");
@@ -108,6 +117,8 @@ export function ViewerPage() {
       wsRef.current = ws;
 
       ws.onopen = () => {
+        if (!alive) { ws?.close(); return; }
+        log("open — live");
         setWsState("live");
       };
 
@@ -133,20 +144,27 @@ export function ViewerPage() {
             });
           }
         } catch {
-          /* ignore malformed */
+          warn("malformed message:", String(event.data).slice(0, 120));
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (ev) => {
+        if (!alive) return;
+        log("closed — code=" + ev.code + " reason=" + (ev.reason || "(none)"));
         setWsState("disconnected");
         wsRef.current = null;
         // Auto-reconnect every 3s while the session is live.
-        if (!session?.ended) {
+        // Use a ref to avoid stale closure on `session?.ended`.
+        if (!endedRef.current) {
+          log("reconnecting in 3s...");
           reconnectTimer = setTimeout(connect, 3000);
+        } else {
+          log("session ended — not reconnecting");
         }
       };
 
       ws.onerror = () => {
+        warn("error event");
         ws?.close();
       };
     };
@@ -154,11 +172,12 @@ export function ViewerPage() {
     connect();
 
     return () => {
+      alive = false;
       if (reconnectTimer) clearTimeout(reconnectTimer);
       ws?.close();
       wsRef.current = null;
     };
-  }, [shareId, session?.ended]);
+  }, [shareId]);
 
   return (
     <div className="min-h-screen bg-[#FAFAFB]">

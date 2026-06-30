@@ -16,6 +16,9 @@ export interface MicState {
   error: string | null;
 }
 
+const log = (...a: unknown[]) => console.info("[MIC]", ...a);
+const warn = (...a: unknown[]) => console.warn("[MIC]", ...a);
+
 /**
  * Captures the selected physical microphone only (not system/tab audio) and
  * exposes a live input level via the Web Audio API. Logs device/sample-rate/
@@ -78,6 +81,7 @@ export function useMicrophone(): MicState {
         },
         video: false,
       };
+      log("requesting getUserMedia...", { deviceId });
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
       streamRef.current = stream;
       setPermission("granted");
@@ -87,19 +91,16 @@ export function useMicrophone(): MicState {
       const settings = track.getSettings();
       setActiveLabel(track.label || "Default microphone");
       if (!deviceId && settings.deviceId) setDeviceId(settings.deviceId);
-
-      if (import.meta.env.DEV) {
-        // Capture pipeline debug logs (development only).
-        // eslint-disable-next-line no-console
-        console.info("[mic] capture started", {
-          device: track.label,
-          deviceId: settings.deviceId,
-          sampleRate: settings.sampleRate,
-          channelCount: settings.channelCount,
-          echoCancellation: settings.echoCancellation,
-          noiseSuppression: settings.noiseSuppression,
-        });
-      }
+      log("capture started", {
+        device: track.label,
+        deviceId: settings.deviceId,
+        sampleRate: settings.sampleRate,
+        channelCount: settings.channelCount,
+        echoCancellation: settings.echoCancellation,
+        noiseSuppression: settings.noiseSuppression,
+        trackState: track.readyState,
+        trackEnabled: track.enabled,
+      });
 
       // Level metering via AnalyserNode.
       const AudioCtx =
@@ -108,6 +109,15 @@ export function useMicrophone(): MicState {
           .webkitAudioContext;
       const ctx = new AudioCtx();
       audioCtxRef.current = ctx;
+
+      // Resume AudioContext (browsers start it suspended outside user gesture).
+      if (ctx.state === "suspended") {
+        log("AudioContext suspended — resuming...");
+        await ctx.resume();
+        log("AudioContext state:", ctx.state);
+      }
+      log("AudioContext created:", ctx.state);
+
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 512;
@@ -128,8 +138,13 @@ export function useMicrophone(): MicState {
         // Silent-mic detection: ~3s of near-zero input.
         if (rms < 0.01) {
           silenceFramesRef.current += 1;
-          if (silenceFramesRef.current > 180) setSilent(true);
+          if (silenceFramesRef.current === 1) log("silence detected (first frame)");
+          if (silenceFramesRef.current > 180) {
+            if (!silent) log("mic silent for ~3s — showing warning");
+            setSilent(true);
+          }
         } else {
+          if (silenceFramesRef.current > 10) log("audio detected after silence");
           silenceFramesRef.current = 0;
           setSilent(false);
         }
@@ -140,6 +155,7 @@ export function useMicrophone(): MicState {
       return stream;
     } catch (err) {
       const e = err as DOMException;
+      warn("getUserMedia failed:", e.name, e.message);
       if (e.name === "NotAllowedError" || e.name === "SecurityError") {
         setPermission("denied");
         setError("Microphone permission denied. Enable mic access to record.");
