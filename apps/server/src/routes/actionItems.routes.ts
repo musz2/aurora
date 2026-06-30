@@ -3,6 +3,7 @@ import { updateActionItemSchema } from "@aurora/shared";
 import { prisma } from "../lib/prisma.js";
 import { asyncHandler, notFound, badRequest } from "../utils/http.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireFeature } from "../config/entitlements.js";
 import { serializeActionItem } from "../utils/serializers.js";
 import { extractActionItems } from "../services/ai.service.js";
 
@@ -65,6 +66,7 @@ router.put(
 
 router.post(
   "/extract",
+  requireFeature("ai_chat"),
   asyncHandler(async (req, res) => {
     const { meetingId } = req.body as { meetingId?: string };
     if (!meetingId) throw badRequest("meetingId is required");

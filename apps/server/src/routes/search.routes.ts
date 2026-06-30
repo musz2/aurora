@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { asyncHandler } from "../utils/http.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireFeature } from "../config/entitlements.js";
 import { buildReferences, buildSnippet } from "../services/search.service.js";
 
 const router = Router();
@@ -9,6 +10,7 @@ router.use(requireAuth);
 
 router.get(
   "/",
+  requireFeature("long_history"),
   asyncHandler(async (req, res) => {
     const q = ((req.query.q as string) ?? "").trim();
     if (!q) {

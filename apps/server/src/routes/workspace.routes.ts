@@ -4,6 +4,7 @@ import { inviteMemberSchema, vocabularySchema } from "@aurora/shared";
 import { prisma } from "../lib/prisma.js";
 import { asyncHandler, notFound } from "../utils/http.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireFeature } from "../config/entitlements.js";
 import { writeAudit } from "../services/audit.service.js";
 
 const router = Router();
@@ -47,6 +48,7 @@ router.put(
 
 router.get(
   "/members",
+  requireFeature("team_workspace"),
   asyncHandler(async (req, res) => {
     const members = await prisma.workspaceMember.findMany({
       where: { workspaceId: req.auth!.workspaceId },
@@ -66,6 +68,7 @@ router.get(
 
 router.post(
   "/invite",
+  requireFeature("team_workspace"),
   asyncHandler(async (req, res) => {
     const data = inviteMemberSchema.parse(req.body);
     const email = data.email.toLowerCase();
@@ -103,6 +106,7 @@ router.post(
 
 router.get(
   "/vocabulary",
+  requireFeature("custom_vocabulary"),
   asyncHandler(async (req, res) => {
     const terms = await prisma.customVocabulary.findMany({
       where: { workspaceId: req.auth!.workspaceId },
@@ -114,6 +118,7 @@ router.get(
 
 router.post(
   "/vocabulary",
+  requireFeature("custom_vocabulary"),
   asyncHandler(async (req, res) => {
     const data = vocabularySchema.parse(req.body);
     const term = await prisma.customVocabulary.create({
@@ -125,6 +130,7 @@ router.post(
 
 router.delete(
   "/vocabulary/:id",
+  requireFeature("custom_vocabulary"),
   asyncHandler(async (req, res) => {
     const result = await prisma.customVocabulary.deleteMany({
       where: { id: req.params.id, workspaceId: req.auth!.workspaceId },

@@ -13,6 +13,7 @@ export const badRequest = (msg: string, details?: unknown) =>
 export const unauthorized = (msg = "Unauthorized") => new HttpError(401, msg);
 export const forbidden = (msg = "Forbidden") => new HttpError(403, msg);
 export const notFound = (msg = "Not found") => new HttpError(404, msg);
+export const paymentRequired = (msg = "Payment Required") => new HttpError(402, msg);
 
 import type { Request, Response, NextFunction } from "express";
 

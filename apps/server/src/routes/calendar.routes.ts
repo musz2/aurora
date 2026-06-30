@@ -3,6 +3,7 @@ import { createMeetingSchema } from "@aurora/shared";
 import { prisma } from "../lib/prisma.js";
 import { asyncHandler, badRequest } from "../utils/http.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireFeature } from "../config/entitlements.js";
 import {
   buildMockCalendarEvents,
   detectEventMeetingLink,
@@ -23,6 +24,7 @@ router.use(requireAuth);
 
 router.get(
   "/events",
+  requireFeature("integrations"),
   asyncHandler(async (req, res) => {
     const ws = await prisma.workspace.findUnique({
       where: { id: req.auth!.workspaceId },
@@ -101,6 +103,7 @@ router.post(
 
 router.post(
   "/schedule",
+  requireFeature("integrations"),
   asyncHandler(async (req, res) => {
     const event = req.body?.event as CalendarEventInput | undefined;
     if (!event?.title) throw badRequest("event.title is required");
@@ -140,6 +143,7 @@ router.post(
 
 router.post(
   "/auto-join",
+  requireFeature("integrations"),
   asyncHandler(async (req, res) => {
     const { event, captureMode } = req.body as {
       event?: CalendarEventInput;

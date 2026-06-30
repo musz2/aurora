@@ -16,6 +16,7 @@ export interface AuthUser {
   workspaceId: string;
   workspaceName: string;
   plan: PlanId;
+  developerBypass?: boolean;
 }
 
 export interface AuthResponse {

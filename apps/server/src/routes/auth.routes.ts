@@ -1,6 +1,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import { loginSchema, signupSchema, PLANS } from "@aurora/shared";
+import { isDeveloperBypassUser } from "../config/entitlements.js";
 import { prisma } from "../lib/prisma.js";
 import { asyncHandler, badRequest, unauthorized } from "../utils/http.js";
 import {
@@ -70,12 +71,14 @@ router.post(
       return { user, workspace };
     });
 
+    const authUser = await buildAuthUser(result.user.id);
     const payload = {
       userId: result.user.id,
       workspaceId: result.workspace.id,
       role: "OWNER",
+      email: result.user.email,
+      plan: authUser?.plan ?? "BASIC",
     };
-    const authUser = await buildAuthUser(result.user.id);
     res.status(201).json({
       user: authUser,
       accessToken: signAccessToken(payload),
@@ -102,6 +105,8 @@ router.post(
       userId: user.id,
       workspaceId: authUser.workspaceId,
       role: authUser.role,
+      email: user.email,
+      plan: authUser.plan,
     };
     res.json({
       user: authUser,
@@ -124,6 +129,8 @@ router.post(
         userId: payload.userId,
         workspaceId: authUser.workspaceId,
         role: authUser.role,
+        email: authUser.email,
+        plan: authUser.plan,
       };
       res.json({
         user: authUser,
@@ -147,7 +154,10 @@ router.get(
   asyncHandler(async (req, res) => {
     const authUser = await buildAuthUser(req.auth!.userId);
     if (!authUser) throw unauthorized();
-    res.json({ user: authUser, plan: PLANS[authUser.plan] });
+    res.json({
+      user: { ...authUser, developerBypass: isDeveloperBypassUser(authUser.email) },
+      plan: PLANS[authUser.plan],
+    });
   })
 );
 

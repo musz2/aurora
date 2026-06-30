@@ -5,6 +5,8 @@ export interface TokenPayload {
   userId: string;
   workspaceId: string;
   role: string;
+  email: string;
+  plan: string;
 }
 
 export const signAccessToken = (payload: TokenPayload) =>

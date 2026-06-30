@@ -85,18 +85,24 @@ export function DashboardLayout() {
       </nav>
       <div className="border-t border-black/[0.06] p-3">
         <div className="rounded-xl bg-gradient-to-br from-aurora-50 to-white p-4">
-          <p className="text-xs font-semibold text-aurora-700">
-            {user?.plan ?? "BASIC"} plan
-          </p>
+          {user?.developerBypass ? (
+            <p className="text-xs font-semibold text-emerald-700">⭐ Developer — full access</p>
+          ) : (
+            <p className="text-xs font-semibold text-aurora-700">
+              {user?.plan ?? "BASIC"} plan
+            </p>
+          )}
           <p className="mt-1 text-xs text-muted">
             {user?.workspaceName}
           </p>
-          <Link
-            to="/app/billing"
-            className="mt-2 inline-block text-xs font-medium text-aurora-600 hover:underline"
-          >
-            Manage plan →
-          </Link>
+          {!user?.developerBypass && (
+            <Link
+              to="/app/billing"
+              className="mt-2 inline-block text-xs font-medium text-aurora-600 hover:underline"
+            >
+              Manage plan →
+            </Link>
+          )}
         </div>
       </div>
     </div>

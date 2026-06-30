@@ -94,6 +94,10 @@ export const env = {
   // (Vercel); CORS_ALLOWED_ORIGINS is an optional comma-separated allow-list.
   FRONTEND_URL: process.env.FRONTEND_URL ?? process.env.WEB_URL ?? "",
   CORS_ALLOWED_ORIGINS: process.env.CORS_ALLOWED_ORIGINS ?? "",
+    // Comma-separated list of email addresses that bypass all subscription checks
+  // and get full application access. Configured server-side; never exposed to
+  // the frontend bundle.
+  DEVELOPER_BYPASS_EMAILS: process.env.DEVELOPER_BYPASS_EMAILS ?? "",
 };
 
 export const isProduction = env.NODE_ENV === "production";

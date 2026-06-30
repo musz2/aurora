@@ -2,6 +2,7 @@ import { Router } from "express";
 import { INTEGRATION_CATALOG } from "@aurora/shared";
 import { asyncHandler, badRequest } from "../utils/http.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireFeature } from "../config/entitlements.js";
 import { prisma } from "../lib/prisma.js";
 import {
   disconnectIntegration,
@@ -77,6 +78,7 @@ router.use(requireAuth);
 
 router.get(
   "/",
+  requireFeature("integrations"),
   asyncHandler(async (req, res) => {
     res.json({ integrations: await listWorkspaceIntegrations(req.auth!.workspaceId) });
   })
@@ -84,6 +86,7 @@ router.get(
 
 router.post(
   "/:provider/connect",
+  requireFeature("integrations"),
   asyncHandler(async (req, res) => {
     const entry = INTEGRATION_CATALOG.find((i) => i.provider === req.params.provider);
     if (!entry) throw badRequest("Unknown provider");
@@ -152,6 +155,7 @@ router.post(
 
 router.post(
   "/:provider/disconnect",
+  requireFeature("integrations"),
   asyncHandler(async (req, res) => {
     const entry = INTEGRATION_CATALOG.find((i) => i.provider === req.params.provider);
     if (!entry) throw badRequest("Unknown provider");
@@ -165,6 +169,7 @@ router.post(
 
 router.post(
   "/:provider/actions/:action",
+  requireFeature("integrations"),
   asyncHandler(async (req, res) => {
     const provider = req.params.provider;
     const action = req.params.action as IntegrationAction;

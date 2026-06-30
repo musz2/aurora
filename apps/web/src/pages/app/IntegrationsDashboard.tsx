@@ -1,12 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Clock, Settings2, FlaskConical, AlertTriangle, XCircle } from "lucide-react";
+import { Check, Clock, Settings2, FlaskConical, AlertTriangle, XCircle, Sparkles } from "lucide-react";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { api, apiError } from "@/lib/api";
 import { Card } from "@/components/ui/primitives";
 import { Button } from "@/components/ui/Button";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { PageTitle, LoadingBlock } from "@/components/app/shared";
 import { useToast } from "@/components/ui/Toast";
+import { useAuthStore } from "@/store/auth";
+import { PLANS } from "@aurora/shared";
 import type { IntegrationCatalogEntry } from "@aurora/shared";
 
 type IntegrationCard = IntegrationCatalogEntry & {
@@ -65,6 +68,8 @@ function StateBadge({ state }: { state: IntegrationCard["state"] }) {
 export function IntegrationsDashboard() {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const user = useAuthStore((s) => s.user);
   const [channelIds, setChannelIds] = useState<Record<string, string>>({});
   const testAction = useMutation({
     mutationFn: async (provider: string) =>
@@ -107,7 +112,7 @@ export function IntegrationsDashboard() {
     },
     onError: (err) => toast(apiError(err, "Could not disconnect integration."), "error"),
   });
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["integrations"],
     queryFn: async () =>
       (await api.get<{ integrations: IntegrationCard[] }>("/integrations"))
@@ -129,7 +134,22 @@ export function IntegrationsDashboard() {
         local development flows until credentials are added.
       </div>
 
-      {isLoading ? (
+      {error && !user?.developerBypass ? (
+        <div className="rounded-xl border border-black/[0.06] bg-aurora-50/40 p-6 text-center">
+          <Sparkles className="mx-auto h-8 w-8 text-aurora-600" />
+          <h3 className="mt-3 font-display text-lg text-ink">Upgrade to unlock integrations</h3>
+          <p className="mt-1 text-sm text-muted">
+            Integrations are available on the {PLANS.BUSINESS.name} plan and above.
+          </p>
+          <Button
+            variant="secondary"
+            className="mt-4"
+            onClick={() => navigate("/app/billing")}
+          >
+            <Sparkles className="h-4 w-4" /> View plans
+          </Button>
+        </div>
+      ) : isLoading ? (
         <LoadingBlock rows={6} />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

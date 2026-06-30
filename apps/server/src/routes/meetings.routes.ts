@@ -7,6 +7,7 @@ import { prisma } from "../lib/prisma.js";
 import { nanoid } from "nanoid";
 import { asyncHandler, notFound, badRequest } from "../utils/http.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireFeature } from "../config/entitlements.js";
 import {
   serializeActionItem,
   serializeMeeting,
@@ -220,6 +221,7 @@ router.post(
  */
 router.post(
   "/:id/finalize",
+  requireFeature("advanced_summary"),
   asyncHandler(async (req, res) => {
     const meeting = await prisma.meeting.findFirst({
       where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
@@ -365,6 +367,7 @@ router.post(
 
 router.post(
   "/:id/summarize",
+  requireFeature("advanced_summary"),
   asyncHandler(async (req, res) => {
     const meeting = await prisma.meeting.findFirst({
       where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
@@ -552,6 +555,7 @@ router.patch(
 
 router.get(
   "/:id/private-suggestions",
+  requireFeature("ai_chat"),
   asyncHandler(async (req, res) => {
     const meeting = await prisma.meeting.findFirst({
       where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
@@ -575,6 +579,7 @@ router.get(
 
 router.get(
   "/:id/private-notes",
+  requireFeature("ai_chat"),
   asyncHandler(async (req, res) => {
     const meeting = await prisma.meeting.findFirst({
       where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
@@ -595,6 +600,7 @@ router.get(
 
 router.post(
   "/:id/private-notes",
+  requireFeature("ai_chat"),
   asyncHandler(async (req, res) => {
     const text = (req.body?.text as string)?.trim();
     if (!text) throw badRequest("text is required");
@@ -642,6 +648,7 @@ router.post(
 /** Audit activity scoped to a single meeting (host/workspace only). */
 router.get(
   "/:id/audit",
+  requireFeature("team_workspace"),
   asyncHandler(async (req, res) => {
     const meeting = await prisma.meeting.findFirst({
       where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
@@ -724,6 +731,7 @@ router.post(
 
 router.get(
   "/:id/export",
+  requireFeature("exports"),
   asyncHandler(async (req, res) => {
     const format = ((req.query.format as string) ?? "txt").toLowerCase() as ExportFormat;
     if (!["pdf", "docx", "txt", "srt", "vtt", "json"].includes(format)) {

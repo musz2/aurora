@@ -3,6 +3,7 @@ import { chatSchema } from "@aurora/shared";
 import { prisma } from "../lib/prisma.js";
 import { asyncHandler, notFound, badRequest } from "../utils/http.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireFeature } from "../config/entitlements.js";
 import {
   answerMeetingQuestion,
   generateFollowUpEmail,
@@ -15,6 +16,7 @@ router.use(requireAuth);
 
 router.post(
   "/chat",
+  requireFeature("ai_chat"),
   asyncHandler(async (req, res) => {
     const data = chatSchema.parse(req.body);
 
@@ -69,6 +71,7 @@ router.post(
 
 router.post(
   "/summarize",
+  requireFeature("advanced_summary"),
   asyncHandler(async (req, res) => {
     const { meetingId } = req.body as { meetingId?: string };
     if (!meetingId) throw badRequest("meetingId is required");
@@ -89,6 +92,7 @@ router.post(
 
 router.post(
   "/follow-up-email",
+  requireFeature("advanced_summary"),
   asyncHandler(async (req, res) => {
     const { meetingId } = req.body as { meetingId?: string };
     if (!meetingId) throw badRequest("meetingId is required");

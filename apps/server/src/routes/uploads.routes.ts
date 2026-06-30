@@ -5,6 +5,7 @@ import { nanoid } from "nanoid";
 import { prisma } from "../lib/prisma.js";
 import { asyncHandler, badRequest } from "../utils/http.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireFeature } from "../config/entitlements.js";
 import { storage } from "../services/storage.service.js";
 import { serializeMeeting } from "../utils/serializers.js";
 import {
@@ -162,7 +163,7 @@ const handler = asyncHandler(async (req, res) => {
   res.status(201).json({ meeting: serializeMeeting(meeting!) });
 });
 
-router.post("/audio", upload.single("file"), handler);
-router.post("/video", upload.single("file"), handler);
+router.post("/audio", requireFeature("file_upload"), upload.single("file"), handler);
+router.post("/video", requireFeature("file_upload"), upload.single("file"), handler);
 
 export default router;

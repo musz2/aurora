@@ -2,6 +2,7 @@ import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
 import { asyncHandler } from "../utils/http.js";
 import { requireAuth } from "../middleware/auth.js";
+import { requireFeature } from "../config/entitlements.js";
 import { writeAudit } from "../services/audit.service.js";
 
 const router = Router();
@@ -9,6 +10,7 @@ router.use(requireAuth);
 
 router.get(
   "/overview",
+  requireFeature("team_workspace"),
   asyncHandler(async (req, res) => {
     const wsId = req.auth!.workspaceId;
     const [meetings, users, audits, usage, retention] = await Promise.all([
@@ -47,6 +49,7 @@ router.get(
 
 router.get(
   "/audit-logs",
+  requireFeature("team_workspace"),
   asyncHandler(async (req, res) => {
     const logs = await prisma.auditLog.findMany({
       where: { workspaceId: req.auth!.workspaceId },
@@ -59,6 +62,7 @@ router.get(
 
 router.post(
   "/retention/apply",
+  requireFeature("team_workspace"),
   asyncHandler(async (req, res) => {
     const ws = await prisma.workspace.findUnique({
       where: { id: req.auth!.workspaceId },
