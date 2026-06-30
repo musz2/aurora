@@ -83,6 +83,7 @@ export const SOCKET_EVENTS = {
   TRANSCRIPT_PARTIAL: "transcript:partial",
   TRANSCRIPT_ERROR: "transcript:error",
   AUDIO_ACK: "audio:ack",
+  AUDIO_READY: "audio:ready",
   DG_STATUS: "deepgram:status",
   AI_SUGGESTION: "ai:suggestion",
   AI_ERROR: "ai:error",

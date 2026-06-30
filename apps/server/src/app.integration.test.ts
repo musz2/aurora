@@ -1,9 +1,11 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
-import type { Server } from "node:http";
+import { createServer, type Server } from "node:http";
+import { WebSocket, type RawData } from "ws";
 import { createApp } from "./app.js";
 import { signAccessToken } from "./utils/jwt.js";
 import { prisma } from "./lib/prisma.js";
+import { attachSocketServer } from "./sockets/index.js";
 
 /**
  * Integration smoke tests: boot the real Express app on an ephemeral port and hit
@@ -77,11 +79,14 @@ async function authHeaders(session: TestSession): Promise<Record<string, string>
 before(async () => {
   process.env.DEVELOPER_BYPASS_EMAILS = "syedalicr4@gmail.com";
   const app = createApp();
+  const httpServer = createServer(app);
+  attachSocketServer(httpServer);
   await new Promise<void>((resolve) => {
-    server = app.listen(0, () => {
-      const addr = server.address();
+    httpServer.listen(0, () => {
+      const addr = httpServer.address();
       const port = typeof addr === "object" && addr ? addr.port : 0;
       base = `http://127.0.0.1:${port}`;
+      server = httpServer;
       resolve();
     });
   });
@@ -200,4 +205,160 @@ test("different Gmail cannot bypass subscription check", async () => {
   });
   // Different Gmail with BASIC should be blocked.
   assert.equal(res.status, 402, "Different Gmail on BASIC should be blocked");
+});
+
+/* ---------- WebSocket binary audio protocol tests ---------- */
+
+test("WebSocket upgrade succeeds with valid token", async () => {
+  const session = await createTestSession("PRO");
+  const wsUrl = base.replace("http", "ws") + "/ws?token=" + session.token;
+  const ws = new WebSocket(wsUrl);
+
+  const events: string[] = [];
+  ws.onopen = () => events.push("open");
+  ws.onerror = () => events.push("error");
+  ws.onclose = () => events.push("close");
+
+  // Wait for open or error.
+  await new Promise<void>((resolve) => {
+    ws.onopen = () => { events.push("open"); resolve(); };
+    ws.onerror = () => { events.push("error"); resolve(); };
+  });
+
+  assert.equal(events.includes("open"), true, "WebSocket should open successfully");
+  assert.equal(events.includes("error"), false, "WebSocket should not error on upgrade");
+  ws.close();
+});
+
+test("binary message does NOT get JSON.parsed — AUDIO_ACK received", async () => {
+  const session = await createTestSession("PRO");
+  const wsUrl = base.replace("http", "ws") + "/ws?token=" + session.token;
+  const ws = new WebSocket(wsUrl);
+
+  // Wait for open.
+  await new Promise<void>((resolve) => { ws.onopen = () => resolve(); });
+
+  // Send MEETING_START first (init session).
+  ws.send(JSON.stringify({
+    type: "meeting:start",
+    payload: { meetingId: "test-ws-" + Date.now(), mode: "real" },
+  }));
+
+  // Wait for AUDIO_READY (server responds after processing MEETING_START).
+  let gotAudioReady = false;
+  let gotAudioAck = false;
+  let gotJsonParseError = false;
+  let messages: string[] = [];
+
+  ws.onmessage = (event: MessageEvent) => {
+    const data = event.data as string;
+    messages.push(data.slice(0, 80));
+    try {
+      const msg = JSON.parse(data);
+      if (msg.type === "audio:ready") gotAudioReady = true;
+      if (msg.type === "audio:ack") gotAudioAck = true;
+    } catch {
+      // If the server tries to JSON.parse a binary frame, it will send back
+      // a malformed message or the binary data as text. Either way, we flag it.
+      gotJsonParseError = true;
+    }
+  };
+
+  // Wait for AUDIO_READY (server processes MEETING_START).
+  await new Promise<void>((resolve) => {
+    const check = setInterval(() => {
+      if (gotAudioReady) { clearInterval(check); resolve(); }
+    }, 10);
+    setTimeout(() => { clearInterval(check); resolve(); }, 5000);
+  });
+
+  // Now send a binary audio chunk.
+  const audioChunk = Buffer.alloc(1024, 0x80); // Simulated WebM audio data
+  ws.send(audioChunk);
+
+  // Wait for AUDIO_ACK.
+  await new Promise<void>((resolve) => {
+    const check = setInterval(() => {
+      if (gotAudioAck) { clearInterval(check); resolve(); }
+    }, 10);
+    setTimeout(() => { clearInterval(check); resolve(); }, 5000);
+  });
+
+  assert.equal(gotAudioReady, true, "Server should send AUDIO_READY after MEETING_START");
+  assert.equal(gotAudioAck, true, "Server should send AUDIO_ACK after first binary frame");
+  assert.equal(gotJsonParseError, false, "Binary message should NOT cause JSON parse error on server");
+
+  ws.close();
+});
+
+test("MEETING_START arrives before first binary send in WS message order", async () => {
+  const session = await createTestSession("PRO");
+  const wsUrl = base.replace("http", "ws") + "/ws?token=" + session.token;
+  const ws = new WebSocket(wsUrl);
+
+  await new Promise<void>((resolve) => { ws.onopen = () => resolve(); });
+
+  // Send MEETING_START first.
+  ws.send(JSON.stringify({
+    type: "meeting:start",
+    payload: { meetingId: "test-order-" + Date.now(), mode: "real" },
+  }));
+
+  // Wait for AUDIO_READY before sending binary.
+  let ready = false;
+  ws.onmessage = (event: MessageEvent) => {
+    try {
+      const msg = JSON.parse(event.data as string);
+      if (msg.type === "audio:ready") ready = true;
+    } catch { /* ignore */ }
+  };
+
+  await new Promise<void>((resolve) => {
+    const check = setInterval(() => {
+      if (ready) { clearInterval(check); resolve(); }
+    }, 10);
+    setTimeout(() => { clearInterval(check); resolve(); }, 5000);
+  });
+
+  // Now send binary — should receive AUDIO_ACK.
+  let acked = false;
+  ws.onmessage = (event: MessageEvent) => {
+    try {
+      const msg = JSON.parse(event.data as string);
+      if (msg.type === "audio:ack") acked = true;
+    } catch { /* ignore */ }
+  };
+
+  ws.send(Buffer.alloc(512, 0xFF));
+
+  await new Promise<void>((resolve) => {
+    const check = setInterval(() => {
+      if (acked) { clearInterval(check); resolve(); }
+    }, 10);
+    setTimeout(() => { clearInterval(check); resolve(); }, 3000);
+  });
+
+  assert.equal(acked, true, "Binary sent after AUDIO_READY should receive AUDIO_ACK");
+  ws.close();
+});
+
+test("normal close does not emit error event", async () => {
+  const session = await createTestSession("PRO");
+  const wsUrl = base.replace("http", "ws") + "/ws?token=" + session.token;
+  const ws = new WebSocket(wsUrl);
+
+  await new Promise<void>((resolve) => { ws.onopen = () => resolve(); });
+
+  let errorEvent = false;
+  ws.onerror = () => { errorEvent = true; };
+
+  // Normal close (1000).
+  ws.close(1000, "Test complete");
+
+  // Wait for close.
+  await new Promise<void>((resolve) => {
+    ws.onclose = () => setTimeout(resolve, 100);
+  });
+
+  assert.equal(errorEvent, false, "Normal close should not trigger error event");
 });

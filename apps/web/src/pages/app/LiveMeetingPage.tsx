@@ -290,12 +290,38 @@ export function LiveMeetingPage() {
     // the recorder, so that every message reaches the server in order with
     // no risk of dropping the first audio chunk.
     await socket.waitForOpen();
+    log("socket open — sending MEETING_START");
+
+    // Listen for AUDIO_READY before starting recorder.
+    // The server sends AUDIO_READY after session initialization (MEETING_START
+    // processed, Deepgram connection initiated). This prevents the client from
+    // flooding the socket with binary frames before the server is ready.
+    const audioReadyPromise = new Promise<void>((resolve) => {
+      const unsub = socket.on(SOCKET_EVENTS.AUDIO_READY, () => {
+        log("server ready for audio — starting recorder");
+        unsub();
+        resolve();
+      });
+    });
 
     socket.send(SOCKET_EVENTS.MEETING_START, {
       meetingId: meetingIdRef.current,
       mode: m,
       assistantMode,
     });
+
+    // Wait for AUDIO_READY with a 10s timeout. If the server never responds,
+    // surface an error instead of silently hanging.
+    const audioReady = await Promise.race([
+      audioReadyPromise.then(() => true),
+      new Promise<boolean>((resolve) => setTimeout(() => { log("AUDIO_READY timeout — 10s elapsed"); resolve(false); }, 10000)),
+    ]);
+
+    if (!audioReady) {
+      console.warn("[RECORDER] AUDIO_READY not received within 10s — aborting");
+      setSttError((prev) => prev ?? "Server did not confirm audio readiness. Check your connection and try again.");
+      return;
+    }
 
     // Stream real microphone audio as binary frames (real mode only).
     if (m === "real" && stream) {

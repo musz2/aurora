@@ -55,6 +55,7 @@ interface Session {
   interimSpeaker: string;
   stopped: boolean;
   paused: boolean;
+  audioReadySent: boolean;
   assistantMode: AssistantMode;
   // In-session dedup of finalized segments (reconnect-safe layer is DB-backed).
   finals: FinalSegmentWindow;
@@ -67,7 +68,11 @@ function send(ws: WebSocket, type: string, payload: unknown) {
 }
 
 export function attachSocketServer(server: Server) {
-  const wss = new WebSocketServer({ server, path: "/ws" });
+  // perMessageDeflate disabled: binary audio chunks in rapid succession can
+  // trigger "Invalid frame header" errors when compression negotiation or
+  // proxy frame handling introduces framing corruption. Disabling compression
+  // eliminates this entire class of WebSocket protocol failures.
+  const wss = new WebSocketServer({ server, path: "/ws", perMessageDeflate: false });
 
   wss.on("connection", (ws, req) => {
     let auth: TokenPayload | null = null;
@@ -83,7 +88,8 @@ export function attachSocketServer(server: Server) {
       ws.close();
       return;
     }
-    console.info(`[ws] client connected — userId=${auth.userId}`);
+    console.info(`[WS SERVER] upgrade received path=${req.url}`);
+    console.info(`[WS SERVER] client connected userId=${auth.userId}`);
 
     const session: Session = {
       meetingId: "",
@@ -98,6 +104,7 @@ export function attachSocketServer(server: Server) {
       interimSpeaker: "Speaker 1",
       stopped: false,
       paused: false,
+      audioReadySent: false,
       assistantMode: "Technical Meeting",
       finals: new FinalSegmentWindow(),
     };
@@ -337,6 +344,14 @@ export function attachSocketServer(server: Server) {
 
       console.info(`[WS SERVER] starting real session — meetingId=${meetingId}`);
       sendStatus({ status: "RECORDING", engine: "deepgram", state: "listening" });
+
+      // Signal AUDIO_READY so the client knows the session is initialized and
+      // can start sending binary audio frames. This prevents the burst-flush
+      // of queued chunks on socket open that causes "Invalid frame header".
+      send(ws, SOCKET_EVENTS.AUDIO_READY, {});
+      session.audioReadySent = true;
+      console.info(`[WS SERVER] ready for audio — meetingId=${meetingId}`);
+
       send(ws, SOCKET_EVENTS.RECORDING_WARNING, {
         message:
           "Recording active. Ensure all participants have consented per your workspace policy.",
@@ -519,42 +534,68 @@ export function attachSocketServer(server: Server) {
     };
 
     ws.on("message", async (raw: RawData, isBinary: boolean) => {
-      // Binary frames = raw audio chunks from the browser → forward to Deepgram.
+      // ----------------------------------------------------------------
+      // BINARY: raw audio chunks from the browser → forward to Deepgram.
+      // In the ws library, binary frames arrive as Buffer with isBinary=true.
+      // Text frames arrive as string with isBinary=false.
+      // ONLY isBinary is the reliable indicator — Buffer.isBuffer(raw) is
+      // true for BOTH text and binary in some ws library versions, and
+      // ArrayBuffer checks never match (ws uses Node Buffers internally).
+      // ----------------------------------------------------------------
       if (isBinary) {
         // While paused, drop audio so nothing is transcribed or persisted.
         if (session.paused) return;
         session.receivedPackets += 1;
-        const buf = raw as Buffer;
+
+        // [WS SERVER] binary audio received size=
+        let buf: Buffer;
+        if (Buffer.isBuffer(raw)) {
+          buf = raw;
+        } else if (raw instanceof ArrayBuffer) {
+          buf = Buffer.from(raw);
+        } else if (raw instanceof Buffer) {
+          buf = raw;
+        } else {
+          // Last resort: try to convert from string (shouldn't happen)
+          console.warn(`[WS SERVER] unexpected binary type: ${typeof raw} — attempting conversion`);
+          buf = Buffer.from(raw as unknown as string);
+        }
+
         // Log first chunk and every 100th chunk.
         if (session.receivedPackets === 1) {
-          console.info(`[WS SERVER] first audio chunk received — ${buf.length}B from userId=${auth!.userId}`);
+          console.info(`[WS SERVER] binary audio received size=${buf.length}B userId=${auth!.userId}`);
         } else if (session.receivedPackets % 100 === 0) {
-          console.info(`[WS SERVER] audio chunks received — count=${session.receivedPackets} dgOpen=${session.dg?.isOpen() ?? false}`);
+          console.info(`[WS SERVER] binary audio received size=${buf.length}B count=${session.receivedPackets} dgOpen=${session.dg?.isOpen() ?? false}`);
         }
+
         if (session.dg) {
-          if (!session.dg.isOpen()) {
-            if (session.receivedPackets === 1) {
-              console.info(`[WS SERVER] first chunk buffered (Deepgram not open yet) — queueing until Open event`);
-            }
-          }
           session.dg.send(buf);
         } else {
           console.warn(`[WS SERVER] audio chunk #${session.receivedPackets} DROPPED (session.dg is null — MEETING_START may not have been processed yet)`);
         }
+
+        // [WS SERVER] AUDIO_ACK sent received=
         // Send AUDIO_ACK on EVERY packet so the client's no-audio timer
         // clears as soon as the server receives the first chunk.
         send(ws, SOCKET_EVENTS.AUDIO_ACK, {
           received: session.receivedPackets,
         });
+        console.info(`[WS SERVER] AUDIO_ACK sent received=${session.receivedPackets}`);
         return;
       }
 
+      // ----------------------------------------------------------------
+      // TEXT: only reach here for string/text messages.
+      // ----------------------------------------------------------------
       let msg: ClientMessage;
       try {
-        msg = JSON.parse(raw.toString());
+        const text = raw.toString();
+        msg = JSON.parse(text);
       } catch {
+        console.warn(`[WS SERVER] text parse error — raw type=${typeof raw}`);
         return;
       }
+      console.info(`[WS SERVER] text message type=${msg.type}`);
 
       switch (msg.type) {
         case SOCKET_EVENTS.MEETING_START: {

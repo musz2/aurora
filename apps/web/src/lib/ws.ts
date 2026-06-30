@@ -34,10 +34,14 @@ export class AuroraSocket {
   private shouldReconnect = true;
   private reconnectAttempts = 0;
   private queue: string[] = [];
+  /** Holds binary chunks ONLY until AUDIO_READY is received. Never flushed on open. */
   private binaryQueue: (ArrayBuffer | Blob)[] = [];
   private openPromise: Promise<void>;
   private resolveOpen: (() => void) | null = null;
   private binarySeq = 0;
+  /** Server must send AUDIO_READY before any binary frames are sent. */
+  private audioReady = false;
+  private pendingBinaryAfterReady: (ArrayBuffer | Blob)[] = [];
 
   constructor() {
     this.openPromise = new Promise((resolve) => {
@@ -54,18 +58,25 @@ export class AuroraSocket {
     const token = useAuthStore.getState().accessToken;
     const url = socketUrl(token);
     this.shouldReconnect = true;
+    this.audioReady = false;
     this.stateCb?.(this.reconnectAttempts > 0 ? "reconnecting" : "connecting");
     log("connecting to", url);
     this.ws = new WebSocket(url);
 
     this.ws.onopen = () => {
       this.reconnectAttempts = 0;
-      log("open — flushing", this.queue.length, "text +", this.binaryQueue.length, "binary queued messages");
+      // CRITICAL: NEVER flush queued binary chunks on open. Old chunks from
+      // a previous connection are stale. Wait for AUDIO_READY from the server
+      // before sending any binary frames. Flushing old chunks immediately after
+      // upgrade causes "Invalid frame header" errors on proxy infrastructures.
+      if (this.binaryQueue.length > 0) {
+        log("open — discarding", this.binaryQueue.length, "stale queued binary chunks (waiting for AUDIO_READY)");
+        this.binaryQueue = [];
+      }
+      log("open — flushing", this.queue.length, "queued text messages");
       this.stateCb?.("open");
       this.queue.forEach((m) => this.ws?.send(m));
       this.queue = [];
-      this.binaryQueue.forEach((b) => this.ws?.send(b));
-      this.binaryQueue = [];
       this.resolveOpen?.();
       this.openPromise = new Promise((resolve) => {
         this.resolveOpen = resolve;
@@ -75,6 +86,15 @@ export class AuroraSocket {
       if (typeof e.data === "string") {
         try {
           const { type, payload } = JSON.parse(e.data);
+          // Intercept AUDIO_READY to gate binary sends.
+          if (type === "audio:ready") {
+            log("server ready for audio — flushing", this.pendingBinaryAfterReady.length, "pending binary chunks");
+            this.audioReady = true;
+            for (const chunk of this.pendingBinaryAfterReady) {
+              this.ws?.send(chunk);
+            }
+            this.pendingBinaryAfterReady = [];
+          }
           this.handlers.get(type)?.forEach((h) => h(payload));
         } catch {
           warn("malformed message:", String(e.data).slice(0, 120));
@@ -84,8 +104,18 @@ export class AuroraSocket {
       }
     };
     this.ws.onclose = (ev) => {
-      log("closed — code=" + ev.code + " reason=" + (ev.reason || "(none)") + " willReconnect=" + this.shouldReconnect);
+      log("close code=" + ev.code + " reason=" + (ev.reason || "(none)") + " willReconnect=" + this.shouldReconnect);
       this.stateCb?.("closed");
+      // Discard all queued binary — stale chunks are never replayed.
+      if (this.binaryQueue.length > 0) {
+        log("discarding", this.binaryQueue.length, "stale binary chunks on close");
+        this.binaryQueue = [];
+      }
+      if (this.pendingBinaryAfterReady.length > 0) {
+        log("discarding", this.pendingBinaryAfterReady.length, "pending binary chunks on close");
+        this.pendingBinaryAfterReady = [];
+      }
+      this.audioReady = false;
       if (this.shouldReconnect && this.reconnectAttempts < 6) {
         this.reconnectAttempts += 1;
         this.stateCb?.("reconnecting");
@@ -121,21 +151,29 @@ export class AuroraSocket {
     }
   }
 
-  /** Send raw audio bytes as a binary frame (queued until socket opens). */
+  /** Send raw audio bytes as a binary frame. Will NOT send until server
+   *  confirms AUDIO_READY. Chunks are queued and flushed once ready. */
   sendBinary(buffer: ArrayBuffer | Blob) {
     if (!buffer || (buffer instanceof Blob && buffer.size === 0) || (buffer instanceof ArrayBuffer && buffer.byteLength === 0)) {
       warn("sendBinary called with empty buffer — skipping");
       return;
     }
     this.binarySeq += 1;
+    if (!this.audioReady) {
+      log("binary queue held until ready (seq=" + this.binarySeq + " size=" + (buffer instanceof Blob ? buffer.size : buffer.byteLength) + ")");
+      this.pendingBinaryAfterReady.push(buffer);
+      if (this.pendingBinaryAfterReady.length > 400) {
+        warn("pending binary queue full (400) — dropping chunk");
+        this.pendingBinaryAfterReady.shift();
+      }
+      return;
+    }
     if (this.ws?.readyState === WebSocket.OPEN) {
+      log("binary send seq=" + this.binarySeq + " size=" + (buffer instanceof Blob ? buffer.size : buffer.byteLength));
       this.ws.send(buffer);
     } else {
-      if (this.binaryQueue.length < 400) {
-        this.binaryQueue.push(buffer);
-      } else {
-        warn("binary queue full (400) — dropping chunk #" + this.binarySeq);
-      }
+      log("binary queue held (socket not open, seq=" + this.binarySeq + ")");
+      this.binaryQueue.push(buffer);
     }
   }
 
@@ -150,7 +188,9 @@ export class AuroraSocket {
     this.handlers.clear();
     this.queue = [];
     this.binaryQueue = [];
+    this.pendingBinaryAfterReady = [];
     this.binarySeq = 0;
+    this.audioReady = false;
     log("closed (shouldReconnect=false)");
   }
 }
