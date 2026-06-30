@@ -250,7 +250,7 @@ test("binary message does NOT get JSON.parsed — AUDIO_ACK received", async () 
   let gotJsonParseError = false;
   let messages: string[] = [];
 
-  ws.onmessage = (event: MessageEvent) => {
+  ws.onmessage = (event) => {
     const data = event.data as string;
     messages.push(data.slice(0, 80));
     try {
@@ -306,7 +306,7 @@ test("MEETING_START arrives before first binary send in WS message order", async
 
   // Wait for AUDIO_READY before sending binary.
   let ready = false;
-  ws.onmessage = (event: MessageEvent) => {
+  ws.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data as string);
       if (msg.type === "audio:ready") ready = true;
@@ -322,7 +322,7 @@ test("MEETING_START arrives before first binary send in WS message order", async
 
   // Now send binary — should receive AUDIO_ACK.
   let acked = false;
-  ws.onmessage = (event: MessageEvent) => {
+  ws.onmessage = (event) => {
     try {
       const msg = JSON.parse(event.data as string);
       if (msg.type === "audio:ack") acked = true;

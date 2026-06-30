@@ -94,10 +94,15 @@ export const env = {
   // (Vercel); CORS_ALLOWED_ORIGINS is an optional comma-separated allow-list.
   FRONTEND_URL: process.env.FRONTEND_URL ?? process.env.WEB_URL ?? "",
   CORS_ALLOWED_ORIGINS: process.env.CORS_ALLOWED_ORIGINS ?? "",
-    // Comma-separated list of email addresses that bypass all subscription checks
-  // and get full application access. Configured server-side; never exposed to
-  // the frontend bundle.
+  // Authorized OWNER/ADMIN allowlist (NOT an auth/OAuth bypass). The account must
+  // still log in normally; this only marks operator accounts for admin/demo access.
+  // Configured server-side; never exposed to the frontend bundle.
+  OWNER_ADMIN_EMAIL: process.env.OWNER_ADMIN_EMAIL ?? "",
+  // Legacy alias for OWNER_ADMIN_EMAIL (still honored).
   DEVELOPER_BYPASS_EMAILS: process.env.DEVELOPER_BYPASS_EMAILS ?? "",
+  // Gate the owner/admin BILLING override. Set to "true" ONLY in local/staging/demo.
+  // In production, leave unset so billing relies on real subscription status.
+  ENABLE_OWNER_BILLING_OVERRIDE: process.env.ENABLE_OWNER_BILLING_OVERRIDE ?? "",
 };
 
 export const isProduction = env.NODE_ENV === "production";

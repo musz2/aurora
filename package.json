@@ -6,6 +6,9 @@
   "packageManager": "pnpm@9.15.4",
   "scripts": {
     "dev": "pnpm -r --parallel --filter=./apps/* dev",
+    "dev:web": "pnpm --filter @aurora/web dev",
+    "dev:api": "pnpm --filter @aurora/server dev",
+    "dev:desktop": "pnpm --filter @aurora/desktop dev",
     "build": "pnpm --filter @aurora/shared build && pnpm --filter @aurora/server build && pnpm --filter @aurora/web build && pnpm --filter @aurora/desktop build",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",

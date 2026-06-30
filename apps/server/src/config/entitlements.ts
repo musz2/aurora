@@ -3,14 +3,9 @@ import type { FeatureKey, PlanId } from "@aurora/shared";
 import { hasFeature, requiredPlanFor } from "@aurora/shared";
 import { paymentRequired, asyncHandler } from "../utils/http.js";
 
-/**
- * Parse the DEVELOPER_BYPASS_EMAILS env var into a Set of lowercase emails.
- * Re-reads on every call so env overrides (e.g. test-time) take effect without
- * a process restart.
- */
-function getBypassEmails(): Set<string> {
+function parseEmails(raw: string | undefined): Set<string> {
   return new Set(
-    (process.env.DEVELOPER_BYPASS_EMAILS ?? "")
+    (raw ?? "")
       .split(",")
       .map((e) => e.trim().toLowerCase())
       .filter(Boolean)
@@ -18,12 +13,50 @@ function getBypassEmails(): Set<string> {
 }
 
 /**
- * Check whether `email` is in the developer-bypass allowlist. The allowlist is
- * configured server-side via DEVELOPER_BYPASS_EMAILS (comma-separated) and is
- * never exposed to the frontend bundle. Email comparison is exact + lowercase.
+ * Authorized OWNER/ADMIN allowlist. This is NOT a security/auth/OAuth bypass:
+ * the user must still log in normally and present a valid token. It only marks
+ * specific operator accounts (e.g. the project owner) so they can reach admin /
+ * demo surfaces during local development and staging.
+ *
+ * Configured server-side (never exposed to the frontend bundle) via:
+ *   - OWNER_ADMIN_EMAIL        (single or comma-separated; the documented var)
+ *   - DEVELOPER_BYPASS_EMAILS  (legacy alias, still honored)
+ * Re-read on every call so env overrides (e.g. tests) take effect without restart.
  */
+function getOwnerAdminEmails(): Set<string> {
+  const merged = new Set<string>([
+    ...parseEmails(process.env.OWNER_ADMIN_EMAIL),
+    ...parseEmails(process.env.DEVELOPER_BYPASS_EMAILS),
+  ]);
+  return merged;
+}
+
+/** Whether `email` is on the authorized owner/admin allowlist (exact, lowercase). */
+export function isOwnerAdmin(email: string): boolean {
+  return getOwnerAdminEmails().has(email.toLowerCase());
+}
+
+/** Backward-compatible alias for the previous name. */
 export function isDeveloperBypassUser(email: string): boolean {
-  return getBypassEmails().has(email.toLowerCase());
+  return isOwnerAdmin(email);
+}
+
+/**
+ * Whether the owner/admin BILLING override is active for this email. Two safe,
+ * explicit gates (both must be opted into deliberately):
+ *   1. The email is on the owner/admin allowlist, AND
+ *   2. either ENABLE_OWNER_BILLING_OVERRIDE === "true" (the documented gate for
+ *      local/staging/demo), or the email is in the legacy DEVELOPER_BYPASS_EMAILS
+ *      list (legacy explicit opt-in).
+ *
+ * In production, leave ENABLE_OWNER_BILLING_OVERRIDE unset (and the legacy var
+ * empty) so billing relies on real subscription status. This never bypasses
+ * authentication — only the plan/feature gate for an authorized operator account.
+ */
+export function ownerBillingOverrideActive(email: string): boolean {
+  if (!isOwnerAdmin(email)) return false;
+  if (process.env.ENABLE_OWNER_BILLING_OVERRIDE === "true") return true;
+  return parseEmails(process.env.DEVELOPER_BYPASS_EMAILS).has(email.toLowerCase());
 }
 
 /**
@@ -43,8 +76,8 @@ export function requireFeature(featureKey: FeatureKey) {
     }
 
     // Developer bypass: full access regardless of plan.
-    if (isDeveloperBypassUser(email)) {
-      console.info(`[auth] developer bypass granted for ${email}`);
+    if (ownerBillingOverrideActive(email)) {
+      console.info(`[auth] owner/admin billing override granted for ${email}`);
       return next();
     }
 
@@ -73,8 +106,8 @@ export function requirePlan(minPlan: PlanId) {
       return next(paymentRequired("Authentication required for this feature."));
     }
 
-    if (isDeveloperBypassUser(email)) {
-      console.info(`[auth] developer bypass granted for ${email}`);
+    if (ownerBillingOverrideActive(email)) {
+      console.info(`[auth] owner/admin billing override granted for ${email}`);
       return next();
     }
 
