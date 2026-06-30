@@ -171,7 +171,7 @@ export const INTEGRATION_CATALOG: IntegrationCatalogEntry[] = [
 
 /** Maps an integration provider to the env vars that enable it. */
 export const INTEGRATION_ENV_VARS: Record<string, string[]> = {
-  zoom: ["ZOOM_CLIENT_ID", "ZOOM_CLIENT_SECRET"],
+  zoom: ["ZOOM_CLIENT_ID", "ZOOM_CLIENT_SECRET", "ZOOM_REDIRECT_URI"],
   "google-meet": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
   "google-calendar": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"],
   "outlook-calendar": ["MICROSOFT_CLIENT_ID", "MICROSOFT_CLIENT_SECRET", "MICROSOFT_REDIRECT_URI"],

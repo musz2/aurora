@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
 import { HttpError } from "../utils/http.js";
 
-export type OAuthProvider = "google" | "microsoft" | "slack" | "hubspot";
+export type OAuthProvider = "google" | "microsoft" | "slack" | "hubspot" | "zoom";
 
 export interface OAuthState {
   provider: OAuthProvider;
@@ -81,6 +81,14 @@ export function getOAuthConfig(provider: OAuthProvider): OAuthConfig {
       clientSecret: env.HUBSPOT_CLIENT_SECRET,
       redirectUri: env.HUBSPOT_REDIRECT_URI,
       scopes: ["crm.objects.contacts.write", "crm.objects.companies.write", "crm.objects.deals.write"],
+    },
+    zoom: {
+      authUrl: "https://zoom.us/oauth/authorize",
+      tokenUrl: "https://zoom.us/oauth/token",
+      clientId: env.ZOOM_CLIENT_ID,
+      clientSecret: env.ZOOM_CLIENT_SECRET,
+      redirectUri: env.ZOOM_REDIRECT_URI,
+      scopes: ["meeting:read", "meeting:write"],
     },
   };
   return configs[provider];

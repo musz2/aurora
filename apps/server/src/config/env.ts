@@ -53,6 +53,7 @@ export const env = {
   STRIPE_PRICE_BUSINESS: process.env.STRIPE_PRICE_BUSINESS ?? "",
   ZOOM_CLIENT_ID: process.env.ZOOM_CLIENT_ID ?? "",
   ZOOM_CLIENT_SECRET: process.env.ZOOM_CLIENT_SECRET ?? "",
+  ZOOM_REDIRECT_URI: process.env.ZOOM_REDIRECT_URI ?? "",
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? "",
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ?? "",
   GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI ?? "",

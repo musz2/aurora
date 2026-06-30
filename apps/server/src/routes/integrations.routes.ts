@@ -32,6 +32,7 @@ const PROVIDER_TO_OAUTH: Record<string, OAuthProvider | undefined> = {
   teams: "microsoft",
   slack: "slack",
   hubspot: "hubspot",
+  zoom: "zoom",
 };
 
 const OAUTH_TO_PROVIDERS: Record<OAuthProvider, string[]> = {
@@ -39,6 +40,7 @@ const OAUTH_TO_PROVIDERS: Record<OAuthProvider, string[]> = {
   microsoft: ["outlook-calendar", "teams"],
   slack: ["slack"],
   hubspot: ["hubspot"],
+  zoom: ["zoom"],
 };
 
 router.get(
@@ -50,7 +52,9 @@ router.get(
     if (!code || !stateParam) throw badRequest("Missing OAuth code or state");
     const state = verifyOAuthState(stateParam);
     if (state.provider !== provider) throw badRequest("OAuth state provider mismatch");
+    if (provider === "zoom") console.info("[zoom] callback received");
     const tokens = await exchangeOAuthCode(provider, code);
+    if (provider === "zoom") console.info("[zoom] token exchange success");
     for (const integrationProvider of OAUTH_TO_PROVIDERS[provider]) {
       await saveOAuthTokens({
         workspaceId: state.workspaceId,
@@ -84,6 +88,9 @@ router.post(
     const entry = INTEGRATION_CATALOG.find((i) => i.provider === req.params.provider);
     if (!entry) throw badRequest("Unknown provider");
     const oauthProvider = PROVIDER_TO_OAUTH[entry.provider];
+    if (entry.provider === "zoom" && envConfigured("zoom")) {
+      console.info("[zoom] config present");
+    }
     if (!envConfigured(entry.provider)) {
       return res.json({
         provider: entry.provider,
@@ -127,6 +134,7 @@ router.post(
         message: `${entry.name} requires provider approval or a supported OAuth/private-token setup before live use.`,
       });
     }
+    if (entry.provider === "zoom") console.info("[zoom] oauth start");
     const authUrl = buildOAuthUrl(oauthProvider, {
       provider: oauthProvider,
       workspaceId: req.auth!.workspaceId,

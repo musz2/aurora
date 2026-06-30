@@ -61,7 +61,7 @@ export interface IntegrationMetadata {
 }
 
 const PROVIDER_ENV: Record<string, string[]> = {
-  zoom: ["ZOOM_CLIENT_ID", "ZOOM_CLIENT_SECRET"],
+  zoom: ["ZOOM_CLIENT_ID", "ZOOM_CLIENT_SECRET", "ZOOM_REDIRECT_URI"],
   "google-calendar": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"],
   "google-drive": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"],
   "google-meet": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"],
@@ -93,6 +93,7 @@ const OAUTH_PROVIDER: Record<string, OAuthProvider | undefined> = {
   teams: "microsoft",
   slack: "slack",
   hubspot: "hubspot",
+  zoom: "zoom",
 };
 
 export function envConfigured(provider: string) {
@@ -107,7 +108,7 @@ export function envConfigured(provider: string) {
 }
 
 export function providerNeedsApproval(provider: string) {
-  return ["zoom", "google-meet", "teams"].includes(provider);
+  return ["google-meet", "teams"].includes(provider);
 }
 
 function metadataOf(integration: Pick<Integration, "metadata"> | null | undefined): IntegrationMetadata {
