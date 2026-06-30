@@ -331,7 +331,29 @@ export function attachSocketServer(server: Server) {
       session.dgEvents = 0;
       session.receivedPackets = 0;
 
+      console.info(`[WS SERVER] meeting start accepted — meetingId=${meetingId}`);
+      sendStatus({
+        status: "RECORDING",
+        engine: hasDeepgram ? "deepgram" : "none",
+        state: "listening",
+      });
+
+      // ALWAYS confirm the audio session immediately. AUDIO_READY means "the
+      // server accepted the audio session", NOT "Deepgram transcript ready". It
+      // is never gated on the Deepgram connection, so the client can never hang
+      // on "Server did not confirm audio readiness". If STT is unavailable we
+      // still confirm readiness and report the problem via TRANSCRIPT_ERROR below.
+      send(ws, SOCKET_EVENTS.AUDIO_READY, {});
+      session.audioReadySent = true;
+      console.info(`[WS SERVER] audio ready sent — meetingId=${meetingId}`);
+
+      send(ws, SOCKET_EVENTS.RECORDING_WARNING, {
+        message:
+          "Recording active. Ensure all participants have consented per your workspace policy.",
+      });
+
       if (!hasDeepgram) {
+        // Session accepted (AUDIO_READY already sent); transcription won't run.
         console.warn(`[ws] DEEPGRAM_API_KEY not set — live STT unavailable for meeting ${meetingId}`);
         send(ws, SOCKET_EVENTS.TRANSCRIPT_ERROR, {
           code: "stt_not_configured",
@@ -341,21 +363,6 @@ export function attachSocketServer(server: Server) {
         sendStatus({ status: "RECORDING", state: "error", engine: "none" });
         return;
       }
-
-      console.info(`[WS SERVER] starting real session — meetingId=${meetingId}`);
-      sendStatus({ status: "RECORDING", engine: "deepgram", state: "listening" });
-
-      // Signal AUDIO_READY so the client knows the session is initialized and
-      // can start sending binary audio frames. This prevents the burst-flush
-      // of queued chunks on socket open that causes "Invalid frame header".
-      send(ws, SOCKET_EVENTS.AUDIO_READY, {});
-      session.audioReadySent = true;
-      console.info(`[WS SERVER] ready for audio — meetingId=${meetingId}`);
-
-      send(ws, SOCKET_EVENTS.RECORDING_WARNING, {
-        message:
-          "Recording active. Ensure all participants have consented per your workspace policy.",
-      });
 
       send(ws, SOCKET_EVENTS.DG_STATUS, {
         connected: false,
@@ -599,6 +606,7 @@ export function attachSocketServer(server: Server) {
 
       switch (msg.type) {
         case SOCKET_EVENTS.MEETING_START: {
+          console.info(`[WS SERVER] meeting start received`);
           const meetingId = (msg.payload?.meetingId as string) ?? "";
           const mode = (msg.payload?.mode as SessionMode) ?? "real";
           session.mode = mode;
