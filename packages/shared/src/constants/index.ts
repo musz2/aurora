@@ -82,6 +82,10 @@ export const SOCKET_EVENTS = {
   TRANSCRIPT_SEGMENT: "transcript:segment",
   TRANSCRIPT_PARTIAL: "transcript:partial",
   TRANSCRIPT_ERROR: "transcript:error",
+  // server -> shared viewer: content the host explicitly published, pushed live
+  // so the viewer updates instantly without waiting for the next poll.
+  PUBLISHED_ANSWER: "session:published-answer",
+  PUBLISHED_NOTE: "session:published-note",
   AUDIO_ACK: "audio:ack",
   AUDIO_READY: "audio:ready",
   DG_STATUS: "deepgram:status",

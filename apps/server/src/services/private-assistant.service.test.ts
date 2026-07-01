@@ -8,6 +8,7 @@ import {
   generateMockPrivateSuggestion,
   normalizeAssistantMode,
   parseAssistantIntent,
+  questionForAssistAction,
   renderSuggestionText,
 } from "./private-assistant.service.js";
 
@@ -38,6 +39,24 @@ test("Leadership Meeting is a supported mode with full structured guidance", () 
   assert.ok(s.answer.length > 0);
   assert.ok(s.talkingPoints.length >= 2);
   assert.ok(s.risk.length > 0);
+});
+
+test("questionForAssistAction: custom prompt wins, quick actions map, latest is null", () => {
+  // Custom prompt always wins, even with an action type set.
+  assert.equal(
+    questionForAssistAction("summarize_2min", "Answer this for the client"),
+    "Answer this for the client"
+  );
+  // Fixed quick actions map to a stable prompt.
+  assert.match(questionForAssistAction("summarize_2min", "")!, /last 2 minutes/i);
+  assert.match(questionForAssistAction("risks", undefined)!, /risks/i);
+  assert.match(questionForAssistAction("action_items", "")!, /action items/i);
+  assert.match(questionForAssistAction("talking_points", "")!, /talking points/i);
+  assert.match(questionForAssistAction("follow_up", "")!, /follow-up/i);
+  // answer_latest defers to transcript detection (null).
+  assert.equal(questionForAssistAction("answer_latest", ""), null);
+  // Unknown/no action with no prompt → a safe default (not null).
+  assert.ok(questionForAssistAction(undefined, "")!.length > 0);
 });
 
 test("parseAssistantIntent recognizes special triggers", () => {

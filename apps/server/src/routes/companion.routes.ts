@@ -10,6 +10,7 @@ import {
   type ResolvedCompanion,
 } from "../services/companion.service.js";
 import { generateStructuredLiveSuggestion } from "../services/ai.service.js";
+import { broadcastPublishedAnswer } from "../sockets/index.js";
 import {
   normalizeAssistantMode,
   parseAssistantIntent,
@@ -202,18 +203,18 @@ router.post(
     const published = await prisma.publishedAnswer.create({
       data: { meetingId, text, publishedBy: "Host" },
     });
+    const dto = {
+      id: published.id,
+      text: published.text,
+      publishedBy: published.publishedBy,
+      createdAt: published.createdAt.toISOString(),
+    };
+    broadcastPublishedAnswer(meetingId, dto);
     await writeAudit(workspaceId, userId, "companion_published_answer", {
       meetingId,
       publishedAnswerId: published.id,
     });
-    res.status(201).json({
-      published: {
-        id: published.id,
-        text: published.text,
-        publishedBy: published.publishedBy,
-        createdAt: published.createdAt.toISOString(),
-      },
-    });
+    res.status(201).json({ published: dto });
   })
 );
 

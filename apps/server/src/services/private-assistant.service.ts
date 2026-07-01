@@ -160,6 +160,47 @@ export function parseAssistantIntent(raw: string): AssistantIntent {
   return "answer";
 }
 
+/** Quick-action types the same-page Private Copilot can trigger. */
+export const ASSIST_ACTIONS = [
+  "answer_latest",
+  "summarize_2min",
+  "talking_points",
+  "follow_up",
+  "risks",
+  "action_items",
+] as const;
+export type AssistAction = (typeof ASSIST_ACTIONS)[number];
+
+/**
+ * Resolve a same-page Private Copilot request into the question string to feed
+ * the generator. A non-empty `customPrompt` always wins. Otherwise a fixed
+ * prompt is used per quick action. `answer_latest` returns null so the caller
+ * can detect the most recent question from the live transcript instead.
+ */
+export function questionForAssistAction(
+  actionType: string | undefined,
+  customPrompt: string | undefined
+): string | null {
+  const custom = (customPrompt ?? "").trim();
+  if (custom) return custom;
+  switch (actionType) {
+    case "summarize_2min":
+      return "Summarize the last 2 minutes of the conversation.";
+    case "talking_points":
+      return "Give me strong talking points for the current discussion.";
+    case "follow_up":
+      return "Draft a good follow-up question to ask next.";
+    case "risks":
+      return "Identify the key risks and blockers in this discussion.";
+    case "action_items":
+      return "What action items came up in this discussion?";
+    case "answer_latest":
+      return null; // caller detects the latest transcript question
+    default:
+      return "Give me a helpful response based on the current discussion.";
+  }
+}
+
 export function detectQuestions(text: string): DetectedQuestion[] {
   const trimmed = text.trim();
   if (!trimmed) return [];

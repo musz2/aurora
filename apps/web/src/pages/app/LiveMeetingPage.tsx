@@ -109,7 +109,9 @@ export function LiveMeetingPage() {
   const [engineState, setEngineState] = useState<EngineState>("idle");
   const [sttError, setSttError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
-  const [assistantMode, setAssistantMode] = useState<AssistantMode>("Technical Meeting");
+  const [assistantMode, setAssistantMode] = useState<AssistantMode>("General Meeting");
+  const [generating, setGenerating] = useState(false);
+  const [assistError, setAssistError] = useState<string | null>(null);
   const [privateNotes, setPrivateNotes] = useState<PrivateNote[]>([]);
   const [sharedNotes, setSharedNotes] = useState<string[]>([]);
   const [title, setTitle] = useState("Live Session");
@@ -471,38 +473,60 @@ export function LiveMeetingPage() {
     if (id) navigate(`/app/meetings/${id}`);
   };
 
-  const askLive = (q: string) =>
-    socketRef.current?.send(SOCKET_EVENTS.AI_ASK_LIVE, { question: q, assistantMode });
-
-  const publishToTranscript = (text: string) => {
-    const seg: FinalSegment = {
-      id: crypto.randomUUID(),
-      speakerName: "Host (published)",
-      text,
-      startTime: elapsed,
-    };
-    setSegments((prev) => [...prev, seg]);
-    if (meetingIdRef.current)
-      api
-        .post(`/meetings/${meetingIdRef.current}/transcript`, {
-          speakerName: seg.speakerName,
-          text,
-          startTime: elapsed,
-          endTime: elapsed,
-        })
-        .catch(() => {});
-    toast("Published to the shared transcript", "success");
+  /** Same-page Private Copilot: generate a private draft via REST. */
+  const runAssist = async (opts: { actionType?: string; customPrompt?: string }) => {
+    const id = meetingIdRef.current;
+    if (!id) {
+      toast("Start a session first.", "error");
+      return;
+    }
+    setGenerating(true);
+    setAssistError(null);
+    try {
+      const { data } = await api.post(`/meetings/${id}/assist`, {
+        mode: assistantMode,
+        actionType: opts.actionType,
+        customPrompt: opts.customPrompt,
+      });
+      const s = data.suggestion;
+      const text = [
+        `Answer: ${s.answer}`,
+        `Talking points:\n${(s.talkingPoints ?? [])
+          .map((p: string) => `  • ${p}`)
+          .join("\n")}`,
+        `Follow-up: ${s.followUpQuestion}`,
+        `Risk: ${s.risk}`,
+        `Next step: ${s.nextStep}`,
+      ].join("\n");
+      setSuggestions((prev) => [
+        {
+          id: crypto.randomUUID(),
+          question: s.question,
+          suggestion: text,
+          configured: data.configured !== false,
+          mode: s.mode,
+          confidence: s.confidence,
+        },
+        ...prev,
+      ]);
+    } catch (err) {
+      setAssistError(apiError(err, "Could not generate a suggestion"));
+    } finally {
+      setGenerating(false);
+    }
   };
 
-  const publishSharedNote = (text: string) => {
-    if (!meetingIdRef.current) return;
-    api
-      .post(`/meetings/${meetingIdRef.current}/notes`, { note: text })
-      .then(() => {
-        setSharedNotes((prev) => [...prev, text]);
-        toast("Published to shared notes", "success");
-      })
-      .catch(() => toast("Could not add note", "error"));
+  /** Explicitly publish a reviewed draft to the shared session (instant). */
+  const shareAnswer = async (text: string) => {
+    const id = meetingIdRef.current;
+    if (!id) return;
+    try {
+      await api.post(`/meetings/${id}/publish-answer`, { text });
+      setSharedNotes((prev) => [...prev, text]);
+      toast("Shared to session", "success");
+    } catch (err) {
+      toast(apiError(err, "Could not share to session"), "error");
+    }
   };
 
   const savePrivateNote = (text: string) => {
@@ -867,30 +891,24 @@ export function LiveMeetingPage() {
           )}
 
           {recording && (
-            <Card className="p-4">
-              <div className="flex items-center gap-2 text-sm font-medium text-ink">
-                <Smartphone className="h-4 w-4 text-violetAccent" /> Companion Mode
-              </div>
-              <p className="mt-1 text-xs text-muted">
-                Open your host-only private copilot on a second device (e.g. your
-                phone). Secure pairing link with expiry — revoke anytime. Not visible
-                to participants or viewers.
+            <div className="rounded-xl border border-dashed border-black/10 p-3">
+              <p className="text-xs text-muted">
+                The Private Copilot on the right works right here — no second device
+                needed. Optionally, mirror it to your phone.
               </p>
-              <Button
-                variant="secondary"
-                size="sm"
-                className="mt-3 w-full"
+              <button
                 onClick={openCompanion}
                 disabled={companionBusy}
+                className="mt-2 inline-flex items-center gap-1.5 text-xs font-medium text-aurora-600 hover:underline disabled:opacity-50"
               >
                 {companionBusy ? (
                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 ) : (
                   <Smartphone className="h-3.5 w-3.5" />
                 )}
-                Open Companion Mode
-              </Button>
-            </Card>
+                Open on another device
+              </button>
+            </div>
           )}
 
           {DEV && (
@@ -947,14 +965,16 @@ export function LiveMeetingPage() {
             <AssistantPanel
               aiConfigured={config.services.ai}
               recording={recording}
+              hasContext={segments.length > 0}
+              generating={generating}
+              error={assistError}
               mode={assistantMode}
               onModeChange={setAssistantMode}
               suggestions={suggestions}
               privateNotes={privateNotes}
               sharedNotes={sharedNotes}
-              onAsk={askLive}
-              onPublishTranscript={publishToTranscript}
-              onPublishSharedNote={publishSharedNote}
+              onAssist={runAssist}
+              onShareAnswer={(text) => shareAnswer(text)}
               onSavePrivateNote={savePrivateNote}
               onCreateTask={createFollowUpTask}
             />

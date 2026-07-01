@@ -757,6 +757,24 @@ function broadcastToViewers(meetingId: string, type: string, payload: unknown) {
 }
 
 /**
+ * Push a host-published answer to all connected viewers of a meeting so the
+ * shared session updates instantly (the viewer also polls as a fallback).
+ * Only the final published text is sent — never private drafts, prompts, or
+ * internal reasoning.
+ */
+export function broadcastPublishedAnswer(
+  meetingId: string,
+  answer: { id: string; text: string; publishedBy: string; createdAt: string }
+) {
+  broadcastToViewers(meetingId, SOCKET_EVENTS.PUBLISHED_ANSWER, answer);
+}
+
+/** Push a host-published note to all connected viewers of a meeting. */
+export function broadcastPublishedNote(meetingId: string, note: string) {
+  broadcastToViewers(meetingId, SOCKET_EVENTS.PUBLISHED_NOTE, { note });
+}
+
+/**
  * Attach a separate WebSocket server for shared viewers at /ws-viewer.
  * Viewers authenticate via shareId (the public share URL token) — the same
  * security model as the HTTP GET /api/sessions/:shareId endpoint.
@@ -785,7 +803,9 @@ export function attachViewerSocketServer(server: Server) {
     try {
       const meeting = await prisma.meeting.findFirst({
         where: { shareId, shared: true },
-        select: { id: true, shareExpiresAt: true },
+        // `shared` MUST be selected: isShareActive() reads meeting.shared, so
+        // omitting it makes every viewer connection fail the active check.
+        select: { id: true, shared: true, shareExpiresAt: true },
       });
       if (!meeting || !isShareActive(meeting)) {
         ws.send(JSON.stringify({ type: "error", payload: { message: "Invalid or expired share link" } }));
