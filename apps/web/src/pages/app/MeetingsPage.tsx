@@ -56,6 +56,7 @@ export function MeetingsPage() {
   const [mode, setMode] = useState<Mode>("");
   const [hasActions, setHasActions] = useState(false);
   const [hasDecisions, setHasDecisions] = useState(false);
+  const [tag, setTag] = useState("");
 
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["meetings", q, status],
@@ -76,8 +77,9 @@ export function MeetingsPage() {
       list = list.filter((m) => (m.actionItems?.length ?? 0) > 0);
     if (hasDecisions)
       list = list.filter((m) => (m.summary?.decisions?.length ?? 0) > 0);
+    if (tag) list = list.filter((m) => m.tags.includes(tag));
     return list;
-  }, [data, source, mode, hasActions, hasDecisions]);
+  }, [data, source, mode, hasActions, hasDecisions, tag]);
 
   return (
     <div>
@@ -146,7 +148,12 @@ export function MeetingsPage() {
         <Toggle active={hasDecisions} onClick={() => setHasDecisions((v) => !v)}>
           <CheckCircle2 className="h-3.5 w-3.5" /> Has decisions
         </Toggle>
-        {(source || mode || hasActions || hasDecisions || status) && (
+        {tag && (
+          <Toggle active onClick={() => setTag("")}>
+            #{tag} ✕
+          </Toggle>
+        )}
+        {(source || mode || hasActions || hasDecisions || status || tag) && (
           <button
             onClick={() => {
               setSource("");
@@ -154,6 +161,7 @@ export function MeetingsPage() {
               setHasActions(false);
               setHasDecisions(false);
               setStatus("");
+              setTag("");
             }}
             className="text-xs font-medium text-aurora-600 hover:underline"
           >
@@ -224,9 +232,23 @@ export function MeetingsPage() {
                           </Badge>
                         )}
                         {m.tags.map((t) => (
-                          <Badge key={t} tone="slate">
-                            #{t}
-                          </Badge>
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setTag(t);
+                            }}
+                            title={`Filter by #${t}`}
+                          >
+                            <Badge
+                              tone={t === tag ? "indigo" : "slate"}
+                              className="cursor-pointer hover:opacity-80"
+                            >
+                              #{t}
+                            </Badge>
+                          </button>
                         ))}
                       </div>
                     </div>
