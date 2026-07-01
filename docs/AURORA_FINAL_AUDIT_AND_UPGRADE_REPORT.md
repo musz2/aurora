@@ -377,3 +377,45 @@ questions); packs are pure/offline.
   roles; per-pack answer depth beyond the enriched flagship + common entries can
   keep expanding over time. No web unit-test runner exists, so the pack UI is
   verified via typecheck/build + shared/server invariant tests.
+
+---
+
+## 10. Integrations focused on five providers (2026-07-02)
+
+Product decision: Aurora supports **exactly five** integrations, all via OAuth —
+Zoom, Google Meet, Microsoft Teams (meeting platforms) and Google Calendar,
+Outlook Calendar (calendars). See `docs/INTEGRATIONS_STATUS.md`.
+
+- **Removed everywhere:** Slack, Google Drive, Dropbox, HubSpot, Salesforce,
+  Jira, Asana, Notion, Zapier, Email/SMTP export — from the shared catalog,
+  server services/routes, web UI, seed/demo data, env, and `.env.example`.
+- **OAuth only, no passwords:** `oauth.service` providers reduced to
+  google/microsoft/zoom with env-driven scopes (`GOOGLE_CALENDAR_SCOPES`,
+  `MICROSOFT_GRAPH_SCOPES`, `ZOOM_SCOPES`); tokens encrypted at rest and
+  refreshed automatically. No email/password vars anywhere (test-enforced).
+- **Honest states:** connected / needs_approval / not_configured / expired /
+  failed; unsupported providers return HTTP 404; `.env.example` documents the
+  five with redirect URIs and scopes and the "OAuth only, never passwords" note.
+- **Calendar import:** Google Calendar + Outlook Calendar events fetched live
+  with mock fallback; Zoom/Meet/Teams links detected (incl. Google
+  `hangoutLink` and Microsoft `onlineMeeting.joinUrl`) and importable. No
+  auto/bot join is claimed (not implemented).
+- **Web:** integrations dashboard grouped Meeting Platforms / Calendars with
+  connect / disconnect / test-connection, last-synced, and last-error; Drive
+  export button removed; marketing/landing lists limited to the five.
+
+### Tests (integrations.test.ts → 8)
+Catalog is exactly the five; removed providers are unsupported; categories are
+only Meeting Platforms/Calendars; `OAUTH_PROVIDER` maps only the five; env vars
+are OAuth-only (no password/SMTP/email vars); OAuth URL generation works for
+Google/Microsoft/Zoom; missing config throws honestly; Zoom/Meet/Teams link
+detection works.
+
+### Verification
+- shared build ✅ · server typecheck/build ✅ · **server test: 150 tests, 145 pass, 5 skipped, 0 fail** · web typecheck/build ✅ · desktop typecheck/build ✅.
+
+### Remaining limitations
+- Auto/bot join into live Zoom/Meet/Teams calls is intentionally not
+  implemented and not claimed. Live calendar sync requires each provider's OAuth
+  credentials; without them the provider shows "Not configured" and calendars
+  fall back to mock events with real link detection.
