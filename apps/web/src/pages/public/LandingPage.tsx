@@ -110,7 +110,7 @@ export function LandingPage() {
           Works with the tools your team already uses
         </p>
         <div className="mt-8 flex flex-wrap items-center justify-center gap-x-10 gap-y-4 text-lg font-medium text-ink/40">
-          {["Zoom", "Google Meet", "Microsoft Teams", "Slack", "Salesforce", "Notion", "HubSpot"].map(
+          {["Zoom", "Google Meet", "Microsoft Teams", "Google Calendar", "Outlook Calendar"].map(
             (n) => (
               <span key={n}>{n}</span>
             )
