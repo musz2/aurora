@@ -203,3 +203,66 @@ pnpm --filter @aurora/desktop typecheck && pnpm --filter @aurora/desktop build
   subscription status.
 - Provide provider keys only for integrations you actually intend to run live;
   everything else stays honestly in mock/not-configured state.
+
+---
+
+## 7. Transparent Reader Mode + Clean Saved Transcripts (2026-07-01)
+
+See `docs/TRANSPARENT_READER_AND_SAVED_TRANSCRIPTS.md` for the user-facing guide.
+
+### Transparent Reader Mode (shared viewer)
+- Added Standard / Transparent display modes to `/s/:shareId`. Default is
+  standard; the choice + all controls persist in localStorage; `?mode=transparent`
+  sets the UI only (never permissions or data access).
+- Glass panels with a compact control bar and controls for opacity
+  (30/50/70/90), font size (S/M/L), dark/light glass, and compact/expanded
+  layout, driven by CSS variables (`--viewer-opacity`, `--viewer-blur`,
+  `--viewer-font-size`, `--viewer-text-contrast`). Readable over dark + light.
+- Auto-scroll; host-published answers in a separate "Host shared answer" section
+  that highlights when a new answer arrives live over WebSocket.
+- **Safety boundary:** the shared viewer still receives ONLY transcript +
+  published answers/notes. Private copilot drafts, prompts, notes, reasoning,
+  and host controls are excluded server-side by the `sanitizePublicSession`
+  allow-list (unchanged) — transparent mode is display-only.
+
+### Clean Saved Transcript System
+- `transcript-cleanup.service` — deterministic, meaning-preserving readability
+  cleanup (fillers, spacing, punctuation, repeats, sentence casing, question
+  detection). Raw text is always preserved; runs even without AI.
+- `saved-transcript.service` — builds a structured artifact (raw + clean
+  transcript, summary, derived Q&A, decisions, action items, speaker map,
+  host-published answers) and renders polished Markdown. Public/host data only.
+- Schema: `TranscriptSegment.cleanText` (nullable) + migration `7`. Finalization
+  populates `cleanText` for every segment. `GET /meetings/:id/saved-transcript`
+  returns the artifact; serializer exposes `cleanText`.
+- Export: new **Markdown** format (structured saved transcript incl. Q&A and
+  host answers); `publishedAnswers` added to the export payload. Exports exclude
+  private prompts/drafts/notes.
+- UI: Clean/Raw transcript toggle; speaker rename (applies across the meeting);
+  staged finalization progress (cleaning → summary → Q&A → decisions/actions →
+  saving) with an honest result banner.
+
+### Tests added
+- `transcript-cleanup.service.test.ts` (7): cleanup preserves meaning, keeps raw,
+  fixes punctuation/casing, de-dupes, question detection.
+- `saved-transcript.service.test.ts` (7): raw preserved + clean added, Q&A
+  derivation, prefers persisted cleanText, markdown sections, no private fields,
+  honest missing-AI summary.
+- `export.service.test.ts` (+2): markdown export content; private-exclusion across
+  txt/md/json.
+- Existing `shared-viewer.service.test.ts` already proves published answers appear
+  and private drafts/prompts/notes never leak.
+
+### Build/test results
+- shared build ✅ · server typecheck/build ✅ · **server test: 123 tests, 118
+  pass, 5 skipped, 0 fail** · web typecheck/build ✅ · desktop typecheck/build ✅.
+- Runtime QA (live server + Postgres): finalize populates `cleanText`;
+  `GET /saved-transcript` returns the artifact; `?format=md` renders the polished
+  document; viewer WebSocket + published-answer broadcast verified previously.
+
+### Remaining limitations
+- AI summary / Q&A quality depends on `OPENAI_API_KEY`; without it, deterministic
+  cleanup runs and the summary/Q&A are honestly marked as needing a provider.
+- Transparent mode renders glass panels over the browser page background; a web
+  page cannot make the OS/desktop behind the browser show through — this is a
+  readability/layout mode, not a screen overlay, by design (and by safety policy).
