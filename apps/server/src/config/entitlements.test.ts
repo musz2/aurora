@@ -52,9 +52,16 @@ test("billing override needs allowlist AND an explicit gate", () => {
   assert.equal(ownerBillingOverrideActive(OWNER), false);
 });
 
-test("legacy bypass list enables billing override without the new flag", () => {
+test("legacy bypass list marks owner/admin but does NOT grant billing override", () => {
   clearEnv();
+  // The legacy var is still honored as an allowlist source...
   process.env.DEVELOPER_BYPASS_EMAILS = OWNER;
+  assert.equal(isOwnerAdmin(OWNER), true);
+  // ...but the billing override stays OFF until the explicit gate is set, so a
+  // production deploy that only configures the allowlist never unlocks paid
+  // features for free.
+  assert.equal(ownerBillingOverrideActive(OWNER), false);
+  process.env.ENABLE_OWNER_BILLING_OVERRIDE = "true";
   assert.equal(ownerBillingOverrideActive(OWNER), true);
 });
 
