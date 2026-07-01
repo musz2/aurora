@@ -8,8 +8,9 @@ export default {
         sans: ['"Inter"', "ui-sans-serif", "system-ui", "sans-serif"],
       },
       colors: {
-        ink: "#0A0A0B",
-        muted: "#6F6F6F",
+        ink: "#16161A",
+        muted: "#6B6B70",
+        canvas: "#FAF9F7",
         aurora: {
           50: "#eef2ff",
           100: "#e0e7ff",
@@ -34,6 +35,9 @@ export default {
       boxShadow: {
         glass: "0 8px 40px rgba(15, 23, 42, 0.12)",
         glow: "0 0 60px rgba(99, 102, 241, 0.35)",
+        card: "0 1px 2px rgba(22, 22, 26, 0.04), 0 1px 3px rgba(22, 22, 26, 0.05)",
+        lift: "0 4px 12px rgba(22, 22, 26, 0.07), 0 12px 32px rgba(22, 22, 26, 0.07)",
+        modal: "0 24px 64px rgba(22, 22, 26, 0.18)",
       },
       keyframes: {
         "fade-rise": {

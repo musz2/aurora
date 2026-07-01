@@ -96,7 +96,7 @@ export function IntegrationsDashboard() {
     <div>
       <PageTitle
         title="Integrations"
-        subtitle="Connect your meeting platforms and calendars. OAuth only — Aurora never uses email passwords."
+        subtitle="Connect your meeting platforms and calendars. Aurora uses OAuth only. Email passwords are never used."
       />
 
       <div className="mb-5 rounded-xl border border-black/[0.06] bg-aurora-50/40 px-4 py-3 text-sm text-aurora-800">
@@ -129,7 +129,7 @@ export function IntegrationsDashboard() {
                 <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted">{group}</h2>
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {items.map((it) => (
-                    <Card key={it.provider} className="flex flex-col p-5">
+                    <Card key={it.provider} interactive className="flex flex-col p-5">
                       <div className="flex items-center gap-3">
                         <span
                           className="grid h-11 w-11 place-items-center rounded-xl text-sm font-bold text-white"
@@ -204,8 +204,8 @@ export function IntegrationsDashboard() {
 
           <p className="text-xs text-muted">
             Aurora supports Zoom, Google Meet, and Microsoft Teams (meeting
-            platforms) plus Google Calendar and Outlook Calendar. Connections use
-            OAuth — email passwords are never stored or used.
+            platforms) plus Google Calendar and Outlook Calendar. Aurora uses
+            OAuth only. Email passwords are never used.
           </p>
         </div>
       )}

@@ -253,7 +253,7 @@ export function TranscriptTimeline({
 
                     {/* Action toolbar */}
                     {!readOnly && editingId !== s.id && (
-                      <div className="ml-auto flex items-center gap-0.5 opacity-0 transition group-hover:opacity-100">
+                      <div className="ml-auto flex items-center gap-0.5 transition lg:opacity-0 lg:group-hover:opacity-100 lg:group-focus-within:opacity-100">
                         <IconBtn
                           label="Edit text"
                           onClick={() => {

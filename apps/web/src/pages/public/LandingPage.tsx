@@ -306,7 +306,7 @@ export function LandingPage() {
             <SectionHeading
               eyebrow="Security & consent"
               title="Consent-first by design, enterprise-ready by default"
-              subtitle="Aurora never records in stealth. A visible indicator and consent acknowledgement are always on, backed by enterprise governance."
+              subtitle="A visible recording indicator and consent acknowledgement are always on, backed by enterprise governance."
             />
             <div className="mt-8 grid gap-3 sm:grid-cols-2">
               {[

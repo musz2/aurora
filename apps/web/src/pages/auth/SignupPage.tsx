@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { Button } from "@/components/ui/Button";
-import { Input, Label, Spinner } from "@/components/ui/primitives";
+import { Input, Label } from "@/components/ui/primitives";
 import { api, apiError } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 
@@ -110,8 +110,8 @@ export function SignupPage() {
             required
           />
         </div>
-        <Button type="submit" className="w-full" disabled={loading}>
-          {loading ? <Spinner className="h-4 w-4 border-white/40 border-t-white" /> : "Create account"}
+        <Button type="submit" className="w-full" loading={loading}>
+          {loading ? "Creating your workspace…" : "Create account"}
         </Button>
       </form>
 

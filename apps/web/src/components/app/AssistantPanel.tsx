@@ -3,7 +3,6 @@ import type React from "react";
 import {
   ClipboardList,
   Copy,
-  Loader2,
   Lock,
   Sparkles,
   Share2,
@@ -137,9 +136,7 @@ export function AssistantPanel({
             <Lock className="h-3 w-3" /> Host only
           </span>
         </div>
-        <p className="mt-1 text-xs text-muted">
-          Runs on this page — drafts are private until you share them.
-        </p>
+        <p className="mt-1 text-xs text-muted">Private to host until shared.</p>
         <select
           value={mode}
           onChange={(e) => onModeChange(e.target.value as AssistantMode)}
@@ -176,7 +173,12 @@ export function AssistantPanel({
         >
           {generating ? (
             <>
-              <Loader2 className="h-4 w-4 animate-spin" /> Generating…
+              <span className="inline-flex items-end gap-0.5" aria-hidden="true">
+                <span className="thinking-dot h-1.5 w-1.5 rounded-full bg-white" />
+                <span className="thinking-dot h-1.5 w-1.5 rounded-full bg-white" />
+                <span className="thinking-dot h-1.5 w-1.5 rounded-full bg-white" />
+              </span>
+              Thinking…
             </>
           ) : (
             <>
@@ -236,7 +238,10 @@ export function AssistantPanel({
               {suggestions.map((s) => {
                 const isShared = shared.has(s.id);
                 return (
-                  <div key={s.id} className="rounded-xl border border-black/[0.06] bg-aurora-50/40 p-3">
+                  <div
+                    key={s.id}
+                    className="animate-slide-in-right rounded-xl border border-black/[0.06] bg-aurora-50/40 p-3"
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <p className="min-w-0 text-xs font-medium text-aurora-700">“{s.question}”</p>
                       <div className="flex shrink-0 items-center gap-1">

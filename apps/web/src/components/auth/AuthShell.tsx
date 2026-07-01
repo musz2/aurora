@@ -11,12 +11,12 @@ export function AuthShell({
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid min-h-screen lg:grid-cols-2">
+    <div className="grid min-h-dvh bg-canvas lg:grid-cols-2">
       {/* Left — form */}
       <div className="flex flex-col px-6 py-8 sm:px-12">
         <Logo />
         <div className="flex flex-1 flex-col justify-center">
-          <div className="mx-auto w-full max-w-sm py-10">
+          <div className="page-enter mx-auto w-full max-w-sm py-10">
             <h1 className="font-display text-4xl text-ink">{title}</h1>
             <p className="mt-2 text-muted">{subtitle}</p>
             <div className="mt-8">{children}</div>

@@ -306,8 +306,8 @@ function DesktopApp() {
             </div>
             <p className="muted">
               Aurora Desktop connects to your Aurora server with a real access token from a
-              logged-in web session — it never bypasses login. In the web app, sign in, then copy
-              your access token and paste it below.
+              logged-in web session — signing in is always required. In the web app, sign in,
+              then copy your access token and paste it below.
             </p>
             <label className="field-label">Server URL</label>
             <input

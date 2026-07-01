@@ -211,7 +211,7 @@ export function MeetingDetailPage() {
       <div className="grid gap-6 lg:grid-cols-5">
         {/* Transcript */}
         <div className="lg:col-span-3">
-          <Card className="flex h-[680px] flex-col overflow-hidden">
+          <Card className="flex h-[70dvh] min-h-[480px] flex-col overflow-hidden lg:h-[680px]">
             <div className="flex items-center justify-between border-b border-black/[0.06] px-5 py-4">
               <div className="flex items-center gap-2">
                 <FileText className="h-4 w-4 text-aurora-600" />

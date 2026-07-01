@@ -47,13 +47,17 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
   return (
     <Ctx.Provider value={{ toast }}>
       {children}
-      <div className="pointer-events-none fixed bottom-5 right-5 z-[100] flex w-full max-w-sm flex-col gap-2">
+      <div
+        aria-live="polite"
+        className="pointer-events-none fixed bottom-5 right-5 z-[100] flex w-full max-w-sm flex-col gap-2"
+      >
         {toasts.map((t) => {
           const Icon = icons[t.type];
           return (
             <div
               key={t.id}
-              className="pointer-events-auto flex items-start gap-3 rounded-xl border border-black/[0.06] bg-white p-3.5 shadow-glass animate-fade-rise"
+              role="status"
+              className="pointer-events-auto flex items-start gap-3 rounded-xl border border-black/[0.06] bg-white p-3.5 shadow-lift animate-toast-in"
             >
               <Icon className={cn("mt-0.5 h-5 w-5 shrink-0", tones[t.type])} />
               <p className="flex-1 text-sm text-ink">{t.message}</p>

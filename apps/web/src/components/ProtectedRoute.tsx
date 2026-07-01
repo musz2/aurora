@@ -11,7 +11,7 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   // flashing protected content or redirecting a valid-but-unvalidated session.
   if (accessToken && !bootstrapped) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#FAFAFB]">
+      <div className="flex min-h-screen items-center justify-center bg-canvas">
         <Spinner />
       </div>
     );

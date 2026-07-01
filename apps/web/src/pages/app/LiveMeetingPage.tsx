@@ -796,6 +796,18 @@ export function LiveMeetingPage() {
         </div>
       )}
 
+      {recording && conn === "reconnecting" && (
+        <div className="reconnect-sweep relative mb-5 overflow-hidden rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+          <div className="flex items-center gap-2 text-sm text-amber-800">
+            <WifiOff className="h-4 w-4 shrink-0" />
+            <p>
+              <span className="font-medium">Connection interrupted — reconnecting.</span>{" "}
+              Your recording continues locally; the transcript will catch up automatically.
+            </p>
+          </div>
+        </div>
+      )}
+
       {processing && (
         <Card className="mb-6 flex items-center gap-3 p-4">
           <Loader2 className="h-5 w-5 animate-spin text-aurora-600" />
@@ -814,8 +826,8 @@ export function LiveMeetingPage() {
               <span className="text-sm font-medium text-ink">Consent</span>
             </div>
             <p className="text-xs leading-relaxed text-muted">
-              Consent-first. The recording indicator stays visible and is never
-              hidden. Ensure all participants are informed.
+              Consent-first. The recording indicator always stays visible.
+              Ensure all participants are informed.
             </p>
             <MicSelector mic={mic} />
             <MicLevelMeter mic={mic} />
@@ -946,7 +958,7 @@ export function LiveMeetingPage() {
 
         {/* CENTER */}
         <div className="lg:col-span-6">
-          <Card className="flex h-[640px] flex-col overflow-hidden">
+          <Card className="flex h-[70dvh] min-h-[480px] flex-col overflow-hidden lg:h-[640px]">
             <div className="flex items-center justify-between border-b border-black/[0.06] px-5 py-4">
               <span className="font-medium text-ink">Live transcript</span>
               {recording && (
@@ -961,7 +973,7 @@ export function LiveMeetingPage() {
 
         {/* RIGHT */}
         <div className="lg:col-span-3">
-          <Card className="h-[640px] overflow-hidden">
+          <Card className="h-[70dvh] min-h-[480px] overflow-hidden lg:h-[640px]">
             <AssistantPanel
               aiConfigured={config.services.ai}
               recording={recording}
@@ -999,8 +1011,8 @@ export function LiveMeetingPage() {
 
       {/* Companion pairing modal */}
       {companion && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <Card className="w-full max-w-sm p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-4 backdrop-blur-sm animate-fade-in">
+          <Card className="w-full max-w-sm p-6 shadow-modal animate-scale-in">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Smartphone className="h-5 w-5 text-violetAccent" />
@@ -1061,8 +1073,8 @@ export function LiveMeetingPage() {
 
       {/* Consent modal */}
       {showConsent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <Card className="w-full max-w-md p-6">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/45 p-4 backdrop-blur-sm animate-fade-in">
+          <Card className="w-full max-w-md p-6 shadow-modal animate-scale-in">
             <div className="flex items-center gap-2">
               <span className="h-2.5 w-2.5 animate-pulse-dot rounded-full bg-red-500" />
               <h2 className="font-display text-2xl text-ink">

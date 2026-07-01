@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Eye, EyeOff } from "lucide-react";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { Button } from "@/components/ui/Button";
-import { Input, Label, Spinner } from "@/components/ui/primitives";
+import { Input, Label } from "@/components/ui/primitives";
 import { api, apiError } from "@/lib/api";
 import { useAuthStore } from "@/store/auth";
 
@@ -82,8 +82,13 @@ export function LoginPage() {
             </button>
           </div>
         </div>
-        <Button type="submit" className="w-full" disabled={loading || !email || !password}>
-          {loading ? <Spinner className="h-4 w-4 border-white/40 border-t-white" /> : "Log in"}
+        <Button
+          type="submit"
+          className="w-full"
+          loading={loading}
+          disabled={!email || !password}
+        >
+          {loading ? "Logging in…" : "Log in"}
         </Button>
       </form>
 
