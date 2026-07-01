@@ -28,8 +28,28 @@ export type QACategory = (typeof QA_CATEGORIES)[number];
 export interface QAEntry {
   category: QACategory;
   question: string;
+  /** Best senior answer (full, US professional level). */
   answer: string;
+  /** 2–3 line quick summary; derived from the answer when omitted. */
+  summary?: string;
   keyPoints?: string[];
+  /** Realistic project example for a 10+ years candidate. */
+  example?: string;
+  /** What to add if the interviewer probes further. */
+  followUpTip?: string;
+  /** Flagged as a commonly-asked question for the "Most Asked" filter. */
+  mostAsked?: boolean;
+}
+
+/** Per-role "Interview Flow Summary" shown at the top of each pack. */
+export interface InterviewFlow {
+  overview: string;
+  hiringManagersLookFor: string[];
+  positioningExperience: string;
+  openingPitch: string;
+  strengthsToHighlight: string[];
+  redFlagsToAvoid: string[];
+  bestProjectsToDiscuss: string[];
 }
 
 export interface JobPack {
@@ -40,6 +60,44 @@ export interface JobPack {
   strategy: string;
   /** Role-specific Q&A (merged with COMMON_QA when displayed). */
   qa: QAEntry[];
+}
+
+/** A normalized view of an entry with the full card fields always populated. */
+export interface QAEntryView extends QAEntry {
+  summary: string;
+  followUpTip: string;
+}
+
+function firstSentences(text: string, count = 2): string {
+  const parts = text.match(/[^.!?]+[.!?]+/g);
+  if (!parts) return text;
+  return parts.slice(0, count).join(" ").trim();
+}
+
+const DEFAULT_FOLLOWUP: Record<QACategory, string> = {
+  "Intro/HR": "Have a concise 60-second version ready, then offer to go deeper on any point.",
+  Technical: "Be ready to whiteboard the tradeoffs and name what you'd measure to validate it.",
+  Scenario: "Walk through how you'd communicate status and prevent recurrence, not just the fix.",
+  Architecture: "Offer the alternative you rejected and why, to show you weighed tradeoffs.",
+  Troubleshooting: "Explain how you'd add monitoring/guardrails so it can't recur silently.",
+  Behavioral: "Have a specific, measurable example ready if they ask for a concrete story.",
+  Leadership: "Tie it back to a business outcome and how you grew the people involved.",
+  Project: "Be ready to quantify the impact (performance, cost, reliability, or revenue).",
+  "Questions to Ask Interviewer": "Listen for specifics — vague answers are a signal in themselves.",
+};
+
+/** Normalize an entry so the UI always has summary + follow-up (no fabrication). */
+export function entryView(e: QAEntry): QAEntryView {
+  return {
+    ...e,
+    summary: e.summary ?? firstSentences(e.answer),
+    followUpTip: e.followUpTip ?? DEFAULT_FOLLOWUP[e.category],
+  };
+}
+
+/** "Senior Scenario" filter: scenario/architecture/troubleshooting entries. */
+export function isSeniorScenario(e: QAEntry): boolean {
+  return e.category === "Scenario" || e.category === "Architecture" || e.category === "Troubleshooting";
 }
 
 /** The 5 reusable questions every candidate should ask the interviewer. */
@@ -61,15 +119,23 @@ export const COMMON_QA: QAEntry[] = [
     category: "Intro/HR",
     question: "Tell me about yourself.",
     answer:
-      "I have 10+ years delivering and operating production systems end to end. I've grown from hands-on engineering into owning design, mentoring, and delivery, and I'm known for turning ambiguous requirements into reliable, maintainable solutions. Most recently I led [initiative] that delivered [measurable outcome], and I'm looking for a role where I can bring that ownership at scale.",
+      "I have 10+ years delivering and operating production systems end to end. I've grown from hands-on engineering into owning design, mentoring, and delivery, and I'm known for turning ambiguous requirements into reliable, maintainable solutions. Most recently I led an initiative that delivered a measurable outcome — better reliability and lower cost — and I'm looking for a role where I can bring that same ownership at a larger scale.",
+    summary: "Lead with years and scope, one measurable win, and what you want next — keep it to 60 seconds.",
     keyPoints: ["Years + scope", "Ownership + mentoring", "One measurable win", "What you want next"],
+    example:
+      "In my last role I owned the reliability of a customer-facing platform, took it from frequent incidents to a 99.9% SLO, and mentored two engineers who now lead their own areas.",
+    followUpTip: "Have a 30-second and a 2-minute version ready, and tailor the 'measurable win' to this role.",
+    mostAsked: true,
   },
   {
     category: "Intro/HR",
     question: "Why should we hire you?",
     answer:
-      "I combine deep technical depth with delivery ownership — I don't just build, I make sure it ships, scales, and is supportable. I ramp quickly, raise the team's standards, and I've repeatedly taken systems from unstable to dependable. You're hiring judgment and reliability, not just hands.",
+      "I combine deep technical depth with delivery ownership — I don't just build, I make sure it ships, scales, and is supportable. I ramp quickly, raise the team's standards, and I've repeatedly taken systems from unstable to dependable. You're hiring judgment and reliability at a senior level, not just extra hands.",
+    summary: "You bring depth plus delivery ownership, raise team standards, and have a reliability track record.",
     keyPoints: ["Depth + delivery", "Raises team standards", "Reliability track record"],
+    followUpTip: "Back it with one concrete example of raising the bar for a team, with the outcome.",
+    mostAsked: true,
   },
   {
     category: "Intro/HR",
@@ -97,15 +163,23 @@ export const COMMON_QA: QAEntry[] = [
     category: "Behavioral",
     question: "What is your greatest strength?",
     answer:
-      "Turning complexity into something the team can actually ship and operate. I break ambiguous problems into clear increments, communicate tradeoffs, and keep quality and delivery in balance — that's why I'm trusted with the hard, cross-cutting work.",
+      "Turning complexity into something the team can actually ship and operate. I break ambiguous problems into clear increments, communicate tradeoffs, and keep quality and delivery in balance — that's why I'm trusted with the hard, cross-cutting work that spans teams.",
+    summary: "You turn complexity into shippable work, communicate tradeoffs, and are trusted with the hard problems.",
     keyPoints: ["Complexity → shippable", "Tradeoff communication", "Trusted with hard work"],
+    example:
+      "A cross-team migration was stalled on disagreement; I broke it into a phased plan with clear owners and a rollback, and we delivered it with zero downtime.",
+    followUpTip: "Pick the strength most relevant to this role and prove it with one measurable story.",
+    mostAsked: true,
   },
   {
     category: "Behavioral",
     question: "What is your greatest weakness?",
     answer:
-      "Earlier in my career I took on too much myself instead of delegating. I've deliberately worked on it by mentoring and writing things down so others can own areas — the result is a stronger team and more resilient delivery, and I still keep myself in check on it.",
+      "Earlier in my career I took on too much myself instead of delegating. I've deliberately worked on it by mentoring and documenting so others can own areas — the result is a stronger team and more resilient delivery, and I still actively keep myself in check on it.",
+    summary: "A real but non-fatal weakness (over-ownership), a concrete correction, and a positive outcome.",
     keyPoints: ["Real, not fatal", "Concrete correction", "Positive outcome"],
+    followUpTip: "Avoid clichés and 'I work too hard' — show genuine self-awareness and a system you built to fix it.",
+    mostAsked: true,
   },
   {
     category: "Behavioral",
@@ -155,15 +229,25 @@ export const COMMON_QA: QAEntry[] = [
     category: "Project",
     question: "Walk me through a complex project you delivered.",
     answer:
-      "Use context → role → actions → result: the business problem and constraints, what I specifically owned, the key technical decisions and tradeoffs, and the measurable outcome (performance, cost, reliability, or revenue). I keep it to two minutes and invite them to go deeper anywhere.",
+      "I use context → role → actions → result: the business problem and constraints, what I specifically owned, the key technical decisions and tradeoffs, and the measurable outcome (performance, cost, reliability, or revenue). I keep it to about two minutes and invite the interviewer to go deeper on any part.",
+    summary: "Structure it as context → your role → actions → measurable result, in about two minutes.",
     keyPoints: ["Context/role/action/result", "Your specific ownership", "Measurable outcome"],
+    example:
+      "I led re-platforming a batch pipeline to streaming: I owned the design, phased the cutover with a parallel run, and cut data latency from hours to minutes while reducing infra cost ~20%.",
+    followUpTip: "Have two projects ready — one technical-depth story and one leadership/delivery story.",
+    mostAsked: true,
   },
   {
     category: "Project",
     question: "Tell me about a serious production issue you resolved.",
     answer:
-      "I describe how I stabilized first (mitigate impact), then diagnosed with logs/metrics/traces, applied the fix, and communicated status throughout. Afterward I ran a blameless post-mortem and added monitoring or a guardrail so the same class of issue can't recur silently.",
+      "I stabilize first to mitigate customer impact (rollback, failover, or scale), then diagnose with logs, metrics, and traces, apply the fix, and communicate status on a clear cadence throughout. Afterward I run a blameless post-mortem and add monitoring or a guardrail so that class of issue can't recur silently.",
+    summary: "Mitigate first, diagnose with the golden signals, communicate status, then prevent recurrence.",
     keyPoints: ["Mitigate then diagnose", "Communicate status", "Prevent recurrence"],
+    example:
+      "A release spiked error rates; I rolled back within minutes, traced it to an unhandled edge case, added the missing test and an alert, and ran a post-mortem that tightened our release gate.",
+    followUpTip: "Emphasize calm under pressure and the systemic fix, not heroics.",
+    mostAsked: true,
   },
   {
     category: "Project",
@@ -642,9 +726,245 @@ export const JOB_PACKS: JobPack[] = [
   },
 ];
 
+/**
+ * Per-role Interview Flow Summary (US hiring/recruiting oriented). Keyed by pack
+ * id so every pack has one without editing each JobPack object inline.
+ */
+export const INTERVIEW_FLOWS: Record<string, InterviewFlow> = {
+  "data-engineer": {
+    overview: "Own reliable, cost-efficient pipelines feeding analytics/ML — ingestion, transformation, orchestration, and data quality.",
+    hiringManagersLookFor: ["Reliability + SLAs, not just moving data", "Data quality and lineage discipline", "Cost awareness at scale", "Cross-team collaboration with analysts/ML"],
+    positioningExperience: "Frame 10+ years as owning platforms and standards, not just writing jobs — SLAs, idempotency, and cost as first-class.",
+    openingPitch: "I build data platforms teams can trust — idempotent, observable pipelines with clear SLAs and controlled cost.",
+    strengthsToHighlight: ["Idempotent/restartable design", "Data quality + lineage", "Cost/perf optimization", "Stakeholder SLAs"],
+    redFlagsToAvoid: ["Only tool name-dropping", "No mention of data quality", "Ignoring cost", "Can't explain tradeoffs"],
+    bestProjectsToDiscuss: ["A batch→streaming or reliability re-platform", "A data-quality/observability rollout", "A major cost reduction"],
+  },
+  "data-analyst": {
+    overview: "Turn data into trustworthy decisions — robust SQL, defensible metrics, clear visualization, and stakeholder influence.",
+    hiringManagersLookFor: ["Metric rigor and trust", "Business impact, not just charts", "Clear communication to execs", "SQL depth"],
+    positioningExperience: "Position as the analyst leaders trust for the real number and the decision it drives.",
+    openingPitch: "I make numbers trustworthy and actionable — one clear definition, the driver behind it, and the decision it supports.",
+    strengthsToHighlight: ["Metric definition + validation", "Executive communication", "A/B and causal rigor", "Influence with data"],
+    redFlagsToAvoid: ["Vanity dashboards", "No validation of numbers", "Bending data to please", "Can't tie to a decision"],
+    bestProjectsToDiscuss: ["An analysis that changed a decision", "A metrics-layer/standardization effort", "A trusted exec dashboard"],
+  },
+  "data-architect": {
+    overview: "Define data strategy, platform architecture, governance, and standards that enable teams across the org.",
+    hiringManagersLookFor: ["Tradeoff thinking + TCO", "Governance that enables, not gatekeeps", "Migration leadership", "Vendor-neutral judgment"],
+    positioningExperience: "Position as the person who sets direction and de-risks large data programs while enabling teams.",
+    openingPitch: "I design data platforms that scale with the org — open, governed, cost-aware, and easy for teams to build on.",
+    strengthsToHighlight: ["Lakehouse/warehouse tradeoffs", "Governance + lineage", "Large migrations", "Enabling self-serve"],
+    redFlagsToAvoid: ["Ivory-tower architecture", "Lock-in without reason", "Governance as red tape", "No cost story"],
+    bestProjectsToDiscuss: ["A platform/architecture redesign", "A governance/MDM program", "A large migration you led"],
+  },
+  "devops-engineer": {
+    overview: "Own CI/CD, infrastructure-as-code, observability, and reliability across environments.",
+    hiringManagersLookFor: ["Automation + safety (rollbacks/gates)", "IaC discipline", "MTTR / lead-time thinking", "Reduced toil"],
+    positioningExperience: "Frame as enabling teams to ship safely and fast, measured in DORA metrics.",
+    openingPitch: "I make deployments safe and boring — automated, observable, and reversible — so teams ship faster with fewer incidents.",
+    strengthsToHighlight: ["Safe CI/CD + progressive delivery", "Terraform at scale", "Observability + SLOs", "Cost + toil reduction"],
+    redFlagsToAvoid: ["Manual console changes", "No rollback story", "Alert noise tolerance", "Security as afterthought"],
+    bestProjectsToDiscuss: ["A CI/CD or zero-downtime deploy overhaul", "An observability/SLO rollout", "A major cost or toil reduction"],
+  },
+  "cloud-engineer": {
+    overview: "Design secure, scalable, cost-efficient cloud architecture and landing zones (AWS/Azure/GCP).",
+    hiringManagersLookFor: ["Well-Architected mindset", "Security + IAM discipline", "Cost optimization", "Reliability/DR"],
+    positioningExperience: "Position as the person who balances security, reliability, performance, and cost with clear tradeoffs.",
+    openingPitch: "I design cloud that's secure and cost-aware by default, and resilient to the failures that actually happen.",
+    strengthsToHighlight: ["Landing zone + IAM", "Resilient/HA design", "Cost optimization", "IaC + no drift"],
+    redFlagsToAvoid: ["Long-lived keys", "No DR plan", "Cost blind spots", "Manual infra"],
+    bestProjectsToDiscuss: ["A landing zone/security baseline", "A resiliency/DR design", "A 20-30% cost reduction"],
+  },
+  sre: {
+    overview: "Own reliability through SLOs, error budgets, automation, capacity planning, and incident response.",
+    hiringManagersLookFor: ["SLO/error-budget fluency", "Blameless incident leadership", "Toil reduction", "Data-driven reliability"],
+    positioningExperience: "Frame as making reliability an objective, shared decision — not heroics.",
+    openingPitch: "I turn reliability into data: SLOs and error budgets that balance velocity and stability, and incidents that make the system stronger.",
+    strengthsToHighlight: ["SLIs/SLOs + error budgets", "Incident command", "Resilience patterns", "Toil automation"],
+    redFlagsToAvoid: ["Hero culture", "Alert fatigue tolerance", "Blame in post-mortems", "No capacity planning"],
+    bestProjectsToDiscuss: ["An SLO/error-budget program", "A major incident you led", "A toil-reduction/self-healing win"],
+  },
+  "servicenow-developer": {
+    overview: "Build scalable ServiceNow apps and integrations with upgrade-safe, performant platform practices.",
+    hiringManagersLookFor: ["Out-of-box first", "Upgrade-safe customization", "Server vs client discipline", "Integration skill"],
+    positioningExperience: "Position as a platform-disciplined developer who keeps the instance clean and upgradeable.",
+    openingPitch: "I deliver on ServiceNow the right way — configuration first, upgrade-safe extensions, and performant, maintainable code.",
+    strengthsToHighlight: ["Business Rules/Script Includes discipline", "Efficient GlideRecord", "REST integrations", "Flow Designer"],
+    redFlagsToAvoid: ["Modifying OOB scripts", "Queries in loops", "No update-set discipline", "Client-side data logic"],
+    bestProjectsToDiscuss: ["A scoped app you built", "A key integration", "A performance or upgrade cleanup"],
+  },
+  "servicenow-administrator": {
+    overview: "Own platform configuration, users/roles, upgrades, integrations, and instance health.",
+    hiringManagersLookFor: ["Governance + upgrade discipline", "Config over customization", "Security/ACL hygiene", "Instance performance"],
+    positioningExperience: "Frame as the steward who keeps the platform healthy, secure, and upgradeable.",
+    openingPitch: "I keep ServiceNow healthy and governed — clean upgrades, least-privilege access, and a performant instance.",
+    strengthsToHighlight: ["Upgrade planning", "Role/ACL governance", "Update-set discipline", "Instance health"],
+    redFlagsToAvoid: ["Editing prod directly", "Broad admin access", "Skipped upgrade testing", "No governance"],
+    bestProjectsToDiscuss: ["An upgrade you executed", "A governance/access cleanup", "A performance remediation"],
+  },
+  "software-engineer": {
+    overview: "Deliver well-designed, tested, maintainable software and raise engineering standards.",
+    hiringManagersLookFor: ["Design judgment", "Testing discipline", "Pragmatism", "Raising the bar"],
+    positioningExperience: "Position as a senior who ships quality, mentors, and makes good tradeoff calls under real constraints.",
+    openingPitch: "I build software that's correct, maintainable, and shippable — and I raise the standards of the teams I join.",
+    strengthsToHighlight: ["Design + testing", "Legacy improvement", "Concurrency/correctness", "Mentoring/reviews"],
+    redFlagsToAvoid: ["Over-engineering", "No tests", "Rewrite-everything instinct", "Ignoring edge cases"],
+    bestProjectsToDiscuss: ["A well-designed feature/system", "A legacy turnaround", "A tricky bug/perf fix"],
+  },
+  "backend-engineer": {
+    overview: "Build reliable, scalable services, APIs, and data access with strong operational awareness.",
+    hiringManagersLookFor: ["Data correctness", "API design", "Scalability + failure handling", "Owns services in prod"],
+    positioningExperience: "Frame as owning services end to end — design, scale, and on-call reality.",
+    openingPitch: "I build backend services that stay correct and available under load, and I own them in production.",
+    strengthsToHighlight: ["Scalable API/service design", "Transactions + consistency", "Resilience patterns", "Zero-downtime migrations"],
+    redFlagsToAvoid: ["No failure handling", "Ignoring idempotency", "Untested at scale", "No observability"],
+    bestProjectsToDiscuss: ["A high-throughput/scaling win", "A resiliency/latency fix", "A zero-downtime migration"],
+  },
+  "fullstack-engineer": {
+    overview: "Deliver end-to-end features across frontend, backend, and data with product sense.",
+    hiringManagersLookFor: ["Breadth + one deep area", "End-to-end ownership", "User + performance awareness", "Product sense"],
+    positioningExperience: "Position as someone who ships whole features and connects the system, deep where it matters.",
+    openingPitch: "I ship complete features end to end — user experience, API, and data — with an eye on performance and quality.",
+    strengthsToHighlight: ["End-to-end delivery", "Frontend state + performance", "Contract/type safety", "Accessibility/UX"],
+    redFlagsToAvoid: ["Jack-of-all-trades, master of none", "Ignoring performance", "No testing", "Weak product sense"],
+    bestProjectsToDiscuss: ["A full feature you owned", "A performance/UX win", "A shared-contract/type-safety improvement"],
+  },
+  "java-developer": {
+    overview: "Build robust enterprise services with Spring, strong concurrency, and JVM performance awareness.",
+    hiringManagersLookFor: ["JVM + Spring depth", "Concurrency correctness", "Performance tuning", "Clean design"],
+    positioningExperience: "Frame as deep on the JVM and Spring, pragmatic about when to use what.",
+    openingPitch: "I build robust JVM services — clean Spring design, safe concurrency, and performance I can prove with data.",
+    strengthsToHighlight: ["JVM/GC + tuning", "Spring architecture", "Concurrency", "JPA/perf pitfalls"],
+    redFlagsToAvoid: ["Field injection everywhere", "Guessing at GC", "N+1 ignorance", "Swallowing exceptions"],
+    bestProjectsToDiscuss: ["A memory/perf fix", "A resilient service design", "A legacy monolith improvement"],
+  },
+  "python-developer": {
+    overview: "Build backend services, automation, and data-driven apps with clean, tested Python.",
+    hiringManagersLookFor: ["Pythonic + tested code", "Async/GIL awareness", "Performance sense", "Packaging maturity"],
+    positioningExperience: "Position as someone who writes maintainable, production-grade Python, not just scripts.",
+    openingPitch: "I write clean, tested Python that runs reliably in production — right concurrency model, reproducible builds.",
+    strengthsToHighlight: ["Typed, tested code", "asyncio/multiprocessing judgment", "Perf with NumPy/DB", "Reliable background jobs"],
+    redFlagsToAvoid: ["Untyped, untested code", "GIL confusion", "Per-row loops on big data", "Dependency chaos"],
+    bestProjectsToDiscuss: ["A service or automation you owned", "A performance win", "A reliable job/queue system"],
+  },
+  "sap-consultant": {
+    overview: "Drive S/4HANA implementations and migrations with strong business-process alignment and clean-core discipline.",
+    hiringManagersLookFor: ["Process + config depth", "Clean-core mindset", "Migration leadership", "Change management"],
+    positioningExperience: "Frame as balancing business process with configuration, pushing to standard to keep the core clean.",
+    openingPitch: "I deliver SAP that stays upgradeable — fit-to-standard first, clean extensions, and disciplined delivery.",
+    strengthsToHighlight: ["Fit-gap + clean core", "Migration planning", "Integration", "Stakeholder facilitation"],
+    redFlagsToAvoid: ["Custom-everything", "Core modifications", "Big-bang migrations", "Ignoring change mgmt"],
+    bestProjectsToDiscuss: ["An S/4 implementation/migration", "A fit-to-standard win", "A tricky integration"],
+  },
+  "sap-fico": {
+    overview: "Configure FI and CO with deep integration and period-close/compliance rigor.",
+    hiringManagersLookFor: ["Finance process depth", "Integration knowledge", "Close/compliance rigor", "Audit awareness"],
+    positioningExperience: "Position as the consultant finance and audit trust for controls and a clean close.",
+    openingPitch: "I configure FICO that reconciles cleanly and closes on time, with the controls finance and audit expect.",
+    strengthsToHighlight: ["FI-CO integration + ACDOCA", "Period-end close", "Asset accounting", "Compliance/controls"],
+    redFlagsToAvoid: ["Weak on integration", "Ignoring controls/SoD", "No close optimization", "Config without validation"],
+    bestProjectsToDiscuss: ["A close-cycle optimization", "A new-GL/ACDOCA project", "A country rollout"],
+  },
+  "sap-mm": {
+    overview: "Configure procurement, inventory, and logistics invoice verification with strong integration.",
+    hiringManagersLookFor: ["P2P depth", "Master-data discipline", "Account-determination knowledge", "FI/WM integration"],
+    positioningExperience: "Frame as owning procure-to-pay with clean master data and correct financial postings.",
+    openingPitch: "I deliver MM that posts correctly and flows cleanly — solid P2P, valuation, and integration with FI and WM.",
+    strengthsToHighlight: ["P2P + release strategies", "OBYC/account determination", "Split valuation", "Master-data governance"],
+    redFlagsToAvoid: ["Weak on OBYC", "Ignoring master data", "No three-way-match understanding", "Config without testing"],
+    bestProjectsToDiscuss: ["A P2P implementation/rollout", "A valuation/posting fix", "A special-procurement setup"],
+  },
+  "sap-sd": {
+    overview: "Configure order-to-cash, pricing, and delivery with strong integration to MM and FICO.",
+    hiringManagersLookFor: ["O2C depth", "Pricing mastery", "ATP/credit knowledge", "Integration awareness"],
+    positioningExperience: "Position as owning order-to-cash with clean pricing and correct revenue postings.",
+    openingPitch: "I deliver SD that prices right and bills cleanly — solid O2C, pricing, and integration across modules.",
+    strengthsToHighlight: ["Pricing/condition technique", "Copy control", "ATP + credit mgmt", "Revenue/CO-PA integration"],
+    redFlagsToAvoid: ["Weak on pricing", "Copy-control confusion", "No integration story", "Hardcoded hacks"],
+    bestProjectsToDiscuss: ["An O2C implementation/rollout", "A pricing redesign", "A billing/PGI issue you fixed"],
+  },
+  "qa-automation": {
+    overview: "Build reliable test frameworks, CI integration, and a healthy test strategy across the pyramid.",
+    hiringManagersLookFor: ["Test strategy, not just scripts", "Flakiness control", "CI integration", "Quality ownership"],
+    positioningExperience: "Frame as owning quality and enabling devs, with a fast, reliable suite.",
+    openingPitch: "I build test automation teams trust — fast, stable, and integrated into CI so quality scales with delivery.",
+    strengthsToHighlight: ["Pyramid strategy", "Flaky-test elimination", "CI/parallelization", "Quality culture"],
+    redFlagsToAvoid: ["All E2E, no pyramid", "Tolerating flaky tests", "No CI integration", "Coverage vanity"],
+    bestProjectsToDiscuss: ["A framework you built", "A flaky-suite/perf turnaround", "A shift-left quality initiative"],
+  },
+  "business-analyst": {
+    overview: "Bridge business and technology — eliciting requirements, modeling processes, and driving outcomes.",
+    hiringManagersLookFor: ["Structured elicitation", "Clear documentation", "Outcome focus", "Stakeholder influence"],
+    positioningExperience: "Position as translating ambiguity into shared clarity that delivers business value.",
+    openingPitch: "I turn ambiguous needs into clear, testable requirements — and I keep delivery tied to business outcomes.",
+    strengthsToHighlight: ["Elicitation + user stories", "Process modeling", "Data-driven analysis", "Influence without authority"],
+    redFlagsToAvoid: ["Order-taking, not analysis", "Vague requirements", "No outcome focus", "Weak stakeholder mgmt"],
+    bestProjectsToDiscuss: ["An analysis that changed a decision", "A process redesign", "A high-value delivery you shaped"],
+  },
+  "project-manager-scrum": {
+    overview: "Drive delivery, remove impediments, and build high-performing teams.",
+    hiringManagersLookFor: ["Servant leadership", "Delivery discipline", "Risk management", "Stakeholder communication"],
+    positioningExperience: "Frame around outcomes and predictability, not ceremonies — and healthy, high-performing teams.",
+    openingPitch: "I deliver predictably by managing risk early, protecting the team, and keeping stakeholders honestly informed.",
+    strengthsToHighlight: ["Risk/dependency management", "Predictable delivery", "Team health", "Stakeholder comms"],
+    redFlagsToAvoid: ["Ceremony over outcomes", "Hiding red status", "No risk management", "Command-and-control"],
+    bestProjectsToDiscuss: ["A recovered/at-risk project", "A team you leveled up", "A tough stakeholder/dependency you managed"],
+  },
+};
+
+/**
+ * Role-specific questions to ask the interviewer (in addition to the 5 common
+ * ones). Keyed by pack id.
+ */
+export const ROLE_QUESTIONS: Record<string, string[]> = {
+  "data-engineer": ["What do your current pipeline SLAs and data-quality checks look like?", "Where are the biggest reliability or cost pain points today?", "How is data ownership and lineage handled across teams?"],
+  "data-analyst": ["How are core metrics defined and governed today?", "How do analysts influence decisions here?", "What does the current BI/semantic-layer stack look like?"],
+  "data-architect": ["What's the current state of governance, catalog, and lineage?", "What are the biggest architecture pain points or lock-in concerns?", "Are you leaning warehouse, lakehouse, or mesh, and why?"],
+  "devops-engineer": ["What does your current deployment pipeline look like?", "What are the biggest reliability or scaling challenges right now?", "How mature is your monitoring, alerting, and incident response?"],
+  "cloud-engineer": ["What does your landing zone and IAM model look like today?", "What are the top cost or reliability concerns?", "What's your DR posture and how often is it tested?"],
+  sre: ["Do you have SLOs and error budgets in place today?", "What does on-call and incident response look like?", "How much of the team's time goes to toil vs. engineering?"],
+  "servicenow-developer": ["How do you manage upgrades and keep customizations upgrade-safe?", "What integrations are most critical right now?", "What's the biggest performance or tech-debt area on the instance?"],
+  "servicenow-administrator": ["How are upgrades and update sets governed today?", "What's the current state of roles/ACLs and access reviews?", "What are the top instance-health or integration issues?"],
+  "software-engineer": ["What does the codebase health and testing culture look like?", "How are technical decisions made and documented?", "What's the biggest engineering challenge for the team right now?"],
+  "backend-engineer": ["What are the biggest scaling or reliability challenges in the services?", "What does the on-call and incident process look like?", "How do you handle schema migrations and data consistency?"],
+  "fullstack-engineer": ["How is work split across frontend, backend, and data here?", "What's the state of the design system and shared contracts?", "What are the biggest performance or UX challenges?"],
+  "java-developer": ["What does the Spring/service architecture look like today?", "Any known performance or memory pain points?", "How is the team handling legacy vs. new services?"],
+  "python-developer": ["What does the Python stack and deployment look like?", "How are background jobs and data workloads handled?", "What's the testing and packaging maturity?"],
+  "sap-consultant": ["Where are you in the S/4HANA journey — greenfield, brownfield, or selective?", "How much custom code exists and what's the clean-core stance?", "What are the biggest integration or data-quality challenges?"],
+  "sap-fico": ["How long is the current month-end close and where's the pain?", "Are you on new GL / ACDOCA, and any localization needs?", "What are the top controls or audit concerns?"],
+  "sap-mm": ["What does the procure-to-pay landscape and master-data quality look like?", "Any recurring invoice-block or valuation issues?", "How is MM integrated with WM/EWM and FI here?"],
+  "sap-sd": ["How complex is the pricing setup and where's the pain?", "Any recurring billing or ATP/credit issues?", "How is SD integrated with MM and FICO?"],
+  "qa-automation": ["What does the current test pyramid and CI integration look like?", "How much flakiness exists and how is it handled?", "What's the biggest quality or release-confidence gap?"],
+  "business-analyst": ["How are requirements elicited and prioritized today?", "How is success/benefit measured after delivery?", "What's the biggest business-vs-tech alignment challenge?"],
+  "project-manager-scrum": ["What does delivery predictability look like today?", "What are the biggest risks or dependencies for the team?", "How healthy is the team, and what would you change first?"],
+};
+
+export function getInterviewFlow(id: string): InterviewFlow | undefined {
+  return INTERVIEW_FLOWS[id];
+}
+export function getRoleQuestions(id: string): string[] {
+  return ROLE_QUESTIONS[id] ?? [];
+}
+
 /** All entries shown for a pack: shared COMMON_QA + the pack's role-specific Q&A. */
 export function packEntries(pack: JobPack): QAEntry[] {
   return [...pack.qa, ...COMMON_QA];
+}
+
+/** "Most Asked" entries for a pack: flagged HR/behavioral + top technical/scenario. */
+export function mostAskedEntries(pack: JobPack): QAEntry[] {
+  const entries = packEntries(pack);
+  const flagged = entries.filter((e) => e.mostAsked);
+  let tech = 0;
+  let scen = 0;
+  const derived = entries.filter((e) => {
+    if (e.mostAsked) return false;
+    if (e.category === "Technical" && tech < 3) return (tech += 1) > 0;
+    if (e.category === "Scenario" && scen < 2) return (scen += 1) > 0;
+    return false;
+  });
+  return [...flagged, ...derived];
 }
 
 export function getJobPack(id: string): JobPack | undefined {

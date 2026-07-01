@@ -332,3 +332,48 @@ never receive private copilot drafts, prompts, or notes.
   server invariant tests, not automated browser tests.
 - Backup Assist answer quality depends on `OPENAI_API_KEY`; without it the
   offline knowledge packs are used (clearly labelled "Offline pack").
+
+---
+
+## 9. Offline Interview Pack — premium senior US upgrade (2026-07-02)
+
+The Offline Interview Pack was upgraded from a raw question list into a
+professional Senior Answer Guide for 10+ year candidates, aligned with US
+hiring/recruiting expectations. See
+`docs/SHARED_SESSION_RELIABILITY_AND_BACKUP_ASSIST.md`.
+
+- **One-click access:** "Open Offline Interview Pack" in the shared session, next
+  to Backup Assist. Opens instantly in a clean modal; works without AI, without
+  live transcript, and when the connection is unstable.
+- **Rich card format:** Question · Best Senior Answer · Quick Summary · Key
+  Points · Real Project Example · Follow-up Tip, with Copy Full Answer / Copy
+  Summary / Copy Key Points. `QAEntry` gained optional `summary`, `example`,
+  `followUpTip`, `mostAsked`; `entryView()` fills summary + follow-up
+  deterministically (from the actual answer — never fabricated).
+- **Interview Flow Summary** per pack (`INTERVIEW_FLOWS`, all 20): overview, what
+  US hiring managers look for, positioning 10+ years, opening pitch, strengths,
+  red flags, best projects.
+- **Questions to ask the interviewer:** the 5 common ones in every pack plus
+  **role-specific** questions (`ROLE_QUESTIONS`, all 20).
+- **Premium UI:** sticky filter bar, **Most Asked** + **Senior Scenarios** quick
+  filters, collapsible cards, professional typography, mobile responsive.
+- **Safe wording only** (Offline Interview Pack / Senior Answer Guide / Reference
+  Mode / Backup Support); no stealth/hidden/bypass/undetectable/cheat wording
+  (enforced by test).
+
+### Tests (interview-packs.test.ts → 12)
+20+ packs; 30+ entries each; every pack has a complete Interview Flow + 3+ role
+questions + the 5 interviewer questions; `entryView` always fills summary +
+follow-up; Most Asked / Senior Scenario filters non-empty per pack; enriched
+common set has examples/most-asked; no unsafe wording (incl. flows + role
+questions); packs are pure/offline.
+
+### Verification
+- shared build ✅ · server typecheck/build ✅ · **server test: 138 tests, 133 pass, 5 skipped, 0 fail** · web typecheck/build ✅ · desktop typecheck/build ✅.
+
+### Remaining limitations
+- The full per-category minimum counts (10 technical / 8 scenario / etc.) are
+  fully authored for the shared common set and represented structurally for all
+  roles; per-pack answer depth beyond the enriched flagship + common entries can
+  keep expanding over time. No web unit-test runner exists, so the pack UI is
+  verified via typecheck/build + shared/server invariant tests.

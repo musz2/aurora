@@ -57,13 +57,40 @@ and one-click **Open Offline Interview Pack**.
 - Tries AI; if unavailable, returns an **offline knowledge-pack** answer so it
   always works.
 
-## Offline Interview Knowledge Packs
-One-click, works fully offline (no AI, no live transcript, no network once
-loaded). 20+ job titles, each surfacing 30+ senior (10+ years) Q&A across
-categories (Intro/HR, Technical, Scenario, Architecture, Troubleshooting,
-Behavioral, Leadership, Project) plus the 5 common "Questions to Ask
-Interviewer". Job selector, category filters, search, and copy answer / key
-points. This is preparation/reference material only.
+## Offline Interview Knowledge Packs (Senior Answer Guide)
+One-click ("Open Offline Interview Pack", next to Backup Assist), works fully
+offline (no AI, no live transcript, no network once loaded), and stays usable
+even when the connection is unstable. Content targets senior (10+ years)
+candidates and is aligned with US hiring/recruiting expectations —
+professional, confident, business-impact focused, and realistic (not
+fresher-level or generic).
+
+**Premium reading experience.** A sticky filter bar (job selector, search,
+category tabs) with **Most Asked** and **Senior Scenarios** quick filters, plus
+collapsible answer cards structured as:
+
+- Question
+- Best Senior Answer (full, US professional level)
+- Quick Summary (2–3 lines)
+- Key Points to Mention
+- Real Project Example (10+ yr candidate)
+- Follow-up Tip
+
+with **Copy Full Answer / Copy Summary / Copy Key Points** buttons, and mobile
+responsive typography.
+
+**Interview Flow Summary** (per job pack): role overview, what US hiring managers
+look for, how to position 10+ years, a strong opening pitch, strengths to
+highlight, red flags to avoid, best projects to discuss.
+
+**Questions to ask the interviewer**: the 5 common questions in every pack, plus
+**role-specific** questions (e.g. DevOps: "What does your current deployment
+pipeline look like?", "How mature is your monitoring, alerting, and incident
+response?").
+
+20+ job titles, each surfacing 30+ senior Q&A across categories (Intro/HR,
+Technical, Scenario, Architecture, Troubleshooting, Behavioral, Leadership,
+Project). Preparation / reference mode only — no host private data is accessed.
 
 **Job titles:** Data Engineer, Data Analyst, Data Architect, DevOps Engineer,
 Cloud Engineer, SRE, ServiceNow Developer, ServiceNow Administrator, Software
