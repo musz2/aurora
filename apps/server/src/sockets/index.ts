@@ -337,10 +337,17 @@ export function attachSocketServer(server: Server) {
     /* ---------------------- REAL: Deepgram live STT ---------------------- */
 
     const startRealSession = (meetingId: string) => {
+      // Guard against a duplicate MEETING_START on the same socket leaking the
+      // previous Deepgram connection (and its keepAlive interval).
+      if (session.dg) {
+        session.dg.finish();
+        session.dg = null;
+      }
       session.meetingId = meetingId;
       session.startTime = Date.now();
       session.dgEvents = 0;
       session.receivedPackets = 0;
+      session.finals.reset();
 
       console.info(`[WS SERVER] meeting start accepted — meetingId=${meetingId}`);
       sendStatus({
@@ -592,13 +599,17 @@ export function attachSocketServer(server: Server) {
           console.warn(`[WS SERVER] audio chunk #${session.receivedPackets} DROPPED (session.dg is null — MEETING_START may not have been processed yet)`);
         }
 
-        // [WS SERVER] AUDIO_ACK sent received=
-        // Send AUDIO_ACK on EVERY packet so the client's no-audio timer
-        // clears as soon as the server receives the first chunk.
-        send(ws, SOCKET_EVENTS.AUDIO_ACK, {
-          received: session.receivedPackets,
-        });
-        console.info(`[WS SERVER] AUDIO_ACK sent received=${session.receivedPackets}`);
+        // Send AUDIO_ACK on the FIRST packet so the client's no-audio timer
+        // clears the instant the server receives audio, then only periodically
+        // afterwards. The client clears its timer on the first ack (later ones
+        // only feed a dev debug counter), so a per-packet ack (~4/s) is wasted
+        // frames + log spam in production.
+        if (session.receivedPackets === 1 || session.receivedPackets % 25 === 0) {
+          send(ws, SOCKET_EVENTS.AUDIO_ACK, {
+            received: session.receivedPackets,
+          });
+          console.info(`[WS SERVER] AUDIO_ACK sent received=${session.receivedPackets}`);
+        }
         return;
       }
 
