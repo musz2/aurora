@@ -87,6 +87,9 @@ export const env = {
   // Gate the owner/admin BILLING override. Set to "true" ONLY in local/staging/demo.
   // In production, leave unset so billing relies on real subscription status.
   ENABLE_OWNER_BILLING_OVERRIDE: process.env.ENABLE_OWNER_BILLING_OVERRIDE ?? "",
+  // Demo authentication. Never enabled in production. Only allowed for local dev
+  // when explicitly set to "true" — Aurora has no demo login path regardless.
+  ENABLE_DEMO_AUTH: process.env.ENABLE_DEMO_AUTH === "true" && process.env.NODE_ENV !== "production",
 };
 
 export const isProduction = env.NODE_ENV === "production";
@@ -129,20 +132,32 @@ export function validateEnv(): void {
     );
   }
 
-  // Non-fatal warnings: surface security/config gaps without crash-looping the
-  // deploy. JWT secrets are already auto-hardened in production (see env above).
-  const warnings: string[] = [];
+  // Fatal in production: real, stable auth secrets are required. Without them
+  // sessions can't be trusted across restarts, so we fail clearly at startup
+  // rather than silently running on ephemeral/dev secrets.
   if (isProduction) {
-    if (!process.env.JWT_SECRET || !process.env.JWT_REFRESH_SECRET) {
-      warnings.push("Set stable JWT_SECRET + JWT_REFRESH_SECRET so sessions survive restarts.");
+    const missing: string[] = [];
+    if (!process.env.JWT_SECRET) missing.push("JWT_SECRET");
+    if (!process.env.JWT_REFRESH_SECRET) missing.push("JWT_REFRESH_SECRET");
+    if (missing.length > 0) {
+      throw new Error(
+        "Invalid environment configuration:\n" +
+          missing.map((m) => `  • ${m} is required in production (set a strong, stable value).`).join("\n")
+      );
     }
-    if (getAllowedOrigins().length === 0) {
-      warnings.push("Set FRONTEND_URL (or CORS_ALLOWED_ORIGINS) to your web origin.");
+    if (process.env.ENABLE_DEMO_AUTH === "true") {
+      throw new Error(
+        "Invalid environment configuration:\n  • ENABLE_DEMO_AUTH must not be enabled in production."
+      );
     }
   }
+
+  // Non-fatal warnings.
+  const warnings: string[] = [];
+  if (isProduction && getAllowedOrigins().length === 0) {
+    warnings.push("Set FRONTEND_URL (or CORS_ALLOWED_ORIGINS) to your web origin.");
+  }
   if (warnings.length > 0) {
-    console.warn(
-      "[env] Configuration warnings:\n" + warnings.map((w) => `  • ${w}`).join("\n")
-    );
+    console.warn("[env] Configuration warnings:\n" + warnings.map((w) => `  • ${w}`).join("\n"));
   }
 }

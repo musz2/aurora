@@ -454,3 +454,45 @@ never overridden; allowlist alone never unlocks paid features.
 
 ### Verification
 - shared build ✅ · server typecheck/build ✅ · **server test: 154 tests, 149 pass, 5 skipped, 0 fail** · web typecheck/build ✅ · desktop typecheck/build ✅.
+
+---
+
+## 12. Production-ready authentication (2026-07-02)
+
+Audit finding: the **server** auth was already production-grade (bcrypt hashing,
+real DB login, JWT access+refresh, protected `/auth/me`, no password in
+responses, no demo login path). The "demo feel" was entirely on the frontend +
+env hardening. See `docs/AUTHENTICATION_AND_LOGIN.md`.
+
+Fixes:
+- **Removed demo login:** LoginPage no longer prefills `justin@aurora.ai` /
+  `password123` and the "Demo login is pre-filled" banner is gone. Fields start
+  empty with show/hide password and clean SaaS copy.
+- **Signup polish:** added confirm-password + show/hide + client validation
+  (min length, match), lowercase email, loading/disabled/error states.
+- **Honest password reset:** ForgotPasswordPage no longer fakes "email sent";
+  it explains reset requires an email provider and how to regain access.
+- **Session bootstrap:** persisted sessions are validated via `/auth/me` on load
+  (`bootstrapped` flag, not persisted); ProtectedRoute shows a loader until the
+  check completes — no flash of protected content, no stuck loader; expired
+  sessions redirect cleanly (the axios client refreshes once, else logs out).
+- **Env hardening:** production now **fails to boot** if `JWT_SECRET` /
+  `JWT_REFRESH_SECRET` are missing (no ephemeral secrets in prod) or if
+  `ENABLE_DEMO_AUTH=true`. Added `ENABLE_DEMO_AUTH` (dev-only, default false).
+- `.env.example`: documented the required auth vars + `ENABLE_DEMO_AUTH=false`
+  and the "production fails without these" note.
+
+### Tests (app.integration.test.ts auth flow, +6)
+Signup creates a real user+workspace and returns no password hash; duplicate
+signup rejected; login succeeds with correct password and 401s on wrong
+password / unknown user; `/auth/me` requires a valid token and leaks no hash;
+logout ok. Plus existing protected-route-401 and owner-override tests.
+
+### Verification
+- shared build ✅ · server typecheck/build ✅ · **server test: 159 tests, 154 pass, 5 skipped, 0 fail** (auth integration tests run against live Postgres) ·
+  web typecheck/build ✅ · desktop typecheck/build ✅.
+
+### Remaining limitations
+- Social login (Google/Microsoft buttons) is disabled/"coming soon" — not
+  implemented. Self-service password reset needs an email provider (honest
+  missing-config state until then).
