@@ -748,7 +748,7 @@ export function CopilotPage() {
               <Setting
                 icon={privacyMode ? Lock : Unlock}
                 title={`Privacy Mode (${privacyMode ? "on" : "off"})`}
-                body="Blurs/locks private answers and auto-hides the overlay after inactivity to protect against shoulder-surfing. It does NOT hide content from screen sharing, recording, or monitoring tools — Aurora does not provide stealth, screen-share bypass, or proctoring evasion."
+                body="Blurs private answers and auto-hides the overlay after inactivity, as a shoulder-surfing convenience for people physically near your screen. Content remains fully visible to screen sharing and recording — Aurora is consent-first and keeps sessions transparent to participants."
               />
               <Setting
                 icon={Eye}

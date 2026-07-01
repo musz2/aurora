@@ -75,8 +75,8 @@ export function OfflineInterviewPack({ onClose }: { onClose: () => void }) {
   const showQuestionsToAsk = filter === "All" || filter === "Questions to Ask Interviewer";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-2 backdrop-blur-sm sm:p-6">
-      <div className="my-2 w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-ink/50 p-2 backdrop-blur-sm animate-fade-in sm:p-6">
+      <div className="my-2 w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-modal animate-slide-up sm:animate-scale-in">
         {/* Header + sticky filter bar */}
         <div className="sticky top-0 z-10 border-b border-black/[0.06] bg-white/95 backdrop-blur">
           <div className="flex items-center justify-between gap-3 px-4 py-3 sm:px-5">

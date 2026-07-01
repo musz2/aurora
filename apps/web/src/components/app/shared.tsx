@@ -103,12 +103,16 @@ export function EmptyState({
 
 export function LoadingBlock({ rows = 3 }: { rows?: number }) {
   return (
-    <div className="space-y-3">
+    <div className="space-y-3" aria-busy="true" aria-label="Loading">
       {Array.from({ length: rows }).map((_, i) => (
         <div
           key={i}
-          className="h-20 animate-pulse rounded-2xl border border-black/[0.06] bg-white"
-        />
+          className="rounded-2xl border border-black/[0.06] bg-white p-5 shadow-card"
+        >
+          <div className="skeleton h-3.5 w-1/3" />
+          <div className="skeleton mt-3 h-3 w-full" />
+          <div className="skeleton mt-2 h-3 w-2/3" />
+        </div>
       ))}
     </div>
   );

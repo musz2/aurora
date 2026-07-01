@@ -92,7 +92,7 @@ export function SearchPage() {
             <Group title="Meetings" icon={Video}>
               {data!.meetings.map((m) => (
                 <Link key={m.id} to={`/app/meetings/${m.id}`}>
-                  <Card className="p-4 transition hover:shadow-glass">
+                  <Card interactive className="p-4">
                     <p className="font-medium text-ink">{m.title}</p>
                     <p className="text-sm text-muted">{formatDate(m.createdAt)}</p>
                   </Card>
@@ -104,7 +104,7 @@ export function SearchPage() {
             <Group title="Summaries & decisions" icon={FileText}>
               {data!.summaries.map((s) => (
                 <Link key={s.id} to={`/app/meetings/${s.meetingId}`}>
-                  <Card className="p-4 transition hover:shadow-glass">
+                  <Card interactive className="p-4">
                     <p className="font-medium text-ink">{s.meeting.title}</p>
                     <p className="mt-1 line-clamp-2 text-sm text-muted">
                       {s.overview}
@@ -118,7 +118,7 @@ export function SearchPage() {
             <Group title="Transcript matches" icon={FileText}>
               {data!.segments.map((s) => (
                 <Link key={s.id} to={`/app/meetings/${s.meetingId}`}>
-                  <Card className="p-4 transition hover:shadow-glass">
+                  <Card interactive className="p-4">
                     <p className="text-sm text-ink/80">
                       <span className="font-medium text-aurora-700">
                         {s.speakerName}:
@@ -135,7 +135,7 @@ export function SearchPage() {
             <Group title="Action items" icon={ListChecks}>
               {data!.actionItems.map((a) => (
                 <Link key={a.id} to={`/app/meetings/${a.meetingId}`}>
-                  <Card className="p-4 transition hover:shadow-glass">
+                  <Card interactive className="p-4">
                     <p className="text-sm text-ink">{a.task}</p>
                     <p className="mt-1 text-xs text-muted">{a.meeting.title}</p>
                   </Card>

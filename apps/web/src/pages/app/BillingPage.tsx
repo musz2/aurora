@@ -139,6 +139,20 @@ export function BillingPage() {
           >
             {data.stripeEnabled ? "Manage in Stripe" : "Demo mode"}
           </Button>
+          <div className="mt-4 flex flex-wrap items-center gap-1.5">
+            {["Visa", "Mastercard", "Amex", "JCB"].map((brand) => (
+              <span
+                key={brand}
+                className="rounded-md border border-black/10 bg-white px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink/60"
+              >
+                {brand}
+              </span>
+            ))}
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-muted">
+            Payments are processed securely by Stripe. Aurora never collects or
+            stores your card details.
+          </p>
         </Card>
       </div>
 
@@ -151,6 +165,7 @@ export function BillingPage() {
           return (
             <Card
               key={id}
+              interactive
               className={cn(
                 "flex flex-col p-5",
                 isCurrent && "ring-2 ring-aurora-400"
@@ -210,6 +225,14 @@ export function BillingPage() {
             </tr>
           </thead>
           <tbody>
+            {data.invoices.length === 0 && (
+              <tr className="border-t border-black/[0.06]">
+                <td colSpan={5} className="px-5 py-8 text-center text-sm text-muted">
+                  No invoices yet. Your invoices will appear here after your first
+                  paid billing period.
+                </td>
+              </tr>
+            )}
             {data.invoices.map((inv) => (
               <tr key={inv.id} className="border-t border-black/[0.06]">
                 <td className="px-5 py-3 font-medium text-ink">{inv.id}</td>

@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/Button";
 import { StatusPill } from "@/components/ui/StatusPill";
 
 const IMPLEMENTED = [
-  { icon: Eye, title: "Consent-first recording", desc: "A visible recording indicator is always shown. Aurora never records in stealth." },
+  { icon: Eye, title: "Consent-first recording", desc: "A visible recording indicator is always shown, and every session starts with consent." },
   { icon: UserCheck, title: "Consent acknowledgement", desc: "Explicit consent is required before every recording, enforced per workspace policy." },
   { icon: Share2, title: "Share link controls", desc: "Sessions are private by default. You choose what to share; viewers see only the shared transcript and published notes." },
   { icon: Lock, title: "Encryption in transit", desc: "All traffic is served over TLS/HTTPS between client, API, and database." },

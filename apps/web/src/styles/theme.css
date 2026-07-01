@@ -1,5 +1,43 @@
-/* Landing animation primitives (per hero reference). Tailwind also defines
-   equivalents; these class names are kept for parity with the spec. */
+/* ============================================================
+   Aurora design tokens + motion library
+   Semantic tokens live here; Tailwind maps onto them where
+   practical. Class names are kept stable for existing pages.
+   ============================================================ */
+
+:root {
+  /* Surfaces — warm off-white base, pure white cards */
+  --background: #faf9f7;
+  --surface: #ffffff;
+  --surface-subtle: #f6f5f2;
+
+  /* Ink */
+  --ink: #16161a;
+  --ink-muted: #6b6b70;
+
+  /* Aurora accent ramp */
+  --aurora-500: #6366f1;
+  --aurora-600: #4f46e5;
+  --violet-500: #7c3aed;
+  --cyan-500: #06b6d4;
+
+  /* Type */
+  --font-display: "Instrument Serif", Georgia, serif;
+  --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
+
+  /* Elevation scale (use these; avoid ad-hoc shadows) */
+  --shadow-card: 0 1px 2px rgba(22, 22, 26, 0.04), 0 1px 3px rgba(22, 22, 26, 0.05);
+  --shadow-lift: 0 4px 12px rgba(22, 22, 26, 0.07), 0 12px 32px rgba(22, 22, 26, 0.07);
+  --shadow-modal: 0 24px 64px rgba(22, 22, 26, 0.18);
+
+  /* Motion tokens */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+  --dur-fast: 150ms;
+  --dur-base: 220ms;
+  --dur-slow: 350ms;
+}
+
+/* ---------- Keyframes ---------- */
 
 @keyframes fade-rise {
   from {
@@ -12,24 +50,231 @@
   }
 }
 
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Live recording halo — expanding ring on the red dot */
+@keyframes live-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.45);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(239, 68, 68, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+  }
+}
+
+/* AI thinking — three-dot wave */
+@keyframes thinking-dot {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.4;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+/* New transcript row — brief highlight wash that settles */
+@keyframes row-highlight {
+  0% {
+    background-color: rgba(99, 102, 241, 0.1);
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+
+/* Reconnect sweep for recovery banners */
+@keyframes reconnect-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+@keyframes skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+/* ---------- Motion utility classes ---------- */
+
 .animate-fade-rise {
   opacity: 0;
-  animation: fade-rise 0.8s ease-out forwards;
+  animation: fade-rise 0.8s var(--ease-out) forwards;
 }
 .animate-fade-rise-delay {
   opacity: 0;
-  animation: fade-rise 0.8s ease-out 0.2s forwards;
+  animation: fade-rise 0.8s var(--ease-out) 0.2s forwards;
 }
 .animate-fade-rise-delay-2 {
   opacity: 0;
-  animation: fade-rise 0.8s ease-out 0.4s forwards;
+  animation: fade-rise 0.8s var(--ease-out) 0.4s forwards;
 }
 
+.page-enter {
+  animation: page-enter var(--dur-slow) var(--ease-out) both;
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right var(--dur-slow) var(--ease-out) both;
+}
+.animate-slide-in-left {
+  animation: slide-in-left var(--dur-slow) var(--ease-out) both;
+}
+.animate-slide-up {
+  animation: slide-up var(--dur-slow) var(--ease-out) both;
+}
+.animate-scale-in {
+  animation: scale-in var(--dur-base) var(--ease-out) both;
+}
+.animate-toast-in {
+  animation: toast-in var(--dur-base) var(--ease-out) both;
+}
+
+.transcript-line {
+  animation:
+    fade-rise 0.45s var(--ease-out) both,
+    row-highlight 1.6s ease-out both;
+}
+
+.live-dot {
+  animation: live-ring 1.6s ease-out infinite;
+}
+
+.thinking-dot {
+  animation: thinking-dot 1.2s ease-in-out infinite;
+}
+.thinking-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+.thinking-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.reconnect-sweep::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 40%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: reconnect-sweep 1.4s ease-in-out infinite;
+}
+
+/* Card hover lift — transform/opacity only, no layout shift */
+.card-lift {
+  transition:
+    transform var(--dur-base) var(--ease-out),
+    box-shadow var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out);
+}
+.card-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lift);
+}
+
+/* Skeletons */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: rgba(22, 22, 26, 0.055);
+  border-radius: 0.5rem;
+}
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+/* ---------- Reduced motion ---------- */
+
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
   .animate-fade-rise,
   .animate-fade-rise-delay,
   .animate-fade-rise-delay-2 {
-    animation: none;
     opacity: 1;
   }
 }

@@ -496,3 +496,44 @@ logout ok. Plus existing protected-route-401 and owner-override tests.
 - Social login (Google/Microsoft buttons) is disabled/"coming soon" — not
   implemented. Self-service password reset needs an email provider (honest
   missing-config state until then).
+
+---
+
+## 10. Premium UI redesign — meeting command center (2026-07-02)
+
+Full pass over the web app to reach a premium, original, production-ready
+visual standard while keeping every feature intact. Complete details in
+`docs/AURORA_UI_UPGRADE_REPORT.md`.
+
+### What changed
+- **Design system:** warm off-white canvas (#FAF9F7), elevation scale
+  (card/lift/modal), motion tokens + CSS motion library (page transitions, card
+  hover lift, live recording halo, AI thinking dots, transcript row reveal +
+  highlight, copilot answer slide-in, reconnect sweep, skeleton shimmer, toast
+  animation) with a global `prefers-reduced-motion` kill-switch.
+- **New primitives:** Tabs, Modal, Drawer, Skeleton/SkeletonCard, CopyButton,
+  ErrorState; Button `loading` prop; StatusPill connection tones (connected /
+  reconnecting / stale / degraded / offline / ended / expired / ai); accessible
+  Toast (aria-live).
+- **App shell:** grouped sidebar with active indicator, `/` search shortcut,
+  gradient Start-meeting CTA, animated profile menu, route enter transitions.
+- **Dashboard:** command-center layout with quick actions, stats, usage,
+  recent meetings, action items, upcoming, and workspace status (integrations
+  connected count + Backup Assist entry point).
+- **Live meeting / viewer / Backup Assist / Offline Pack / saved transcript /
+  integrations / billing / auth:** targeted polish per area (see UI report).
+- **Safety text:** re-verified Transparent Reader Mode is absent from code;
+  removed all remaining banned wording from visible UI (Security page, Landing,
+  Host Console consent card, Copilot privacy description, desktop settings) in
+  favor of consent-first / private-to-host / Backup Assist language.
+
+### Verification
+- shared build ✅ · server typecheck/build ✅ · **server test: 151 tests,
+  146 pass, 5 skipped, 0 fail** · web typecheck/build ✅ · desktop
+  typecheck/build ✅.
+- Runtime QA against live Postgres/Redis + Deepgram/OpenAI-configured server:
+  console-error audit across 15 authenticated + public routes — clean.
+- 11 screenshots captured to `docs/ui-screenshots/` (desktop 1440×900 + iPhone
+  13): login, signup, dashboard, live meeting, shared session, saved
+  transcript, offline interview pack, integrations, billing, mobile shared
+  session, mobile live meeting.

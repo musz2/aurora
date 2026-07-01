@@ -112,10 +112,10 @@ export function ViewerPage() {
           {(banner || usingCache) && (
             <div
               className={cn(
-                "mb-4 flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm",
+                "relative mb-4 flex items-center gap-2 overflow-hidden rounded-xl border px-4 py-2.5 text-sm",
                 connState === "offline"
                   ? "border-red-200 bg-red-50 text-red-700"
-                  : "border-amber-200 bg-amber-50 text-amber-800"
+                  : "reconnect-sweep border-amber-200 bg-amber-50 text-amber-800"
               )}
             >
               {connState === "offline" ? (
@@ -138,7 +138,7 @@ export function ViewerPage() {
 
           <div className="grid gap-6 lg:grid-cols-3">
             <div className="lg:col-span-2 space-y-4">
-              <div className="flex h-[520px] flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white">
+              <div className="flex h-[60dvh] min-h-[420px] flex-col overflow-hidden rounded-2xl border border-black/[0.06] bg-white shadow-card lg:h-[520px]">
                 <div className="flex items-center justify-between border-b border-black/[0.06] px-5 py-4">
                   <span className="font-medium text-ink">Shared transcript</span>
                   {session.live && (
@@ -259,7 +259,7 @@ function Shell({
 }) {
   const pill = statusPill(connState);
   return (
-    <div className="min-h-screen bg-[#FAFAFB]">
+    <div className="min-h-dvh bg-canvas">
       <header className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-black/[0.06] bg-white/90 px-4 py-4 backdrop-blur sm:px-6">
         <Logo />
         <div className="flex items-center gap-2">
@@ -287,32 +287,44 @@ function Shell({
           </button>
         </div>
       </header>
-      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">{children}</main>
+      <main className="page-enter mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">{children}</main>
     </div>
   );
 }
 
-function statusPill(
-  s: ConnState
-): { tone: "live" | "muted" | "processing" | "error"; label: string; pulse: boolean } | null {
+function statusPill(s: ConnState): {
+  tone:
+    | "live"
+    | "connected"
+    | "reconnecting"
+    | "stale"
+    | "degraded"
+    | "offline"
+    | "ended"
+    | "expired"
+    | "processing"
+    | "error";
+  label: string;
+  pulse: boolean;
+} | null {
   switch (s) {
     case "receiving":
     case "connected":
       return { tone: "live", label: "Live", pulse: true };
     case "initializing":
-      return { tone: "processing", label: "Connecting", pulse: false };
+      return { tone: "processing", label: "Connecting", pulse: true };
     case "reconnecting":
-      return { tone: "processing", label: "Reconnecting", pulse: false };
+      return { tone: "reconnecting", label: "Reconnecting", pulse: true };
     case "degraded":
-      return { tone: "processing", label: "Reconnecting", pulse: false };
+      return { tone: "degraded", label: "Backup mode", pulse: true };
     case "stale":
-      return { tone: "processing", label: "Delayed", pulse: false };
+      return { tone: "stale", label: "Delayed", pulse: true };
     case "offline":
-      return { tone: "error", label: "Offline", pulse: false };
+      return { tone: "offline", label: "Offline", pulse: false };
     case "ended":
-      return { tone: "muted", label: "Ended", pulse: false };
+      return { tone: "ended", label: "Ended", pulse: false };
     case "failed":
-      return { tone: "error", label: "Unavailable", pulse: false };
+      return { tone: "expired", label: "Unavailable", pulse: false };
     default:
       return null;
   }
@@ -368,7 +380,7 @@ function ViewerCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-black/[0.06] bg-white p-5">
+    <div className="animate-slide-up rounded-2xl border border-black/[0.06] bg-white p-5 shadow-card">
       <div className="flex items-center gap-2">
         <Icon className={`h-4 w-4 ${iconClass}`} />
         <span className="text-sm font-medium text-ink">{title}</span>

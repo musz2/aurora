@@ -89,7 +89,7 @@ export function BackupAssistPanel({
   };
 
   return (
-    <div className="rounded-2xl border border-black/[0.06] bg-white p-4 sm:p-5">
+    <div className="animate-slide-up rounded-2xl border border-black/[0.06] bg-white p-4 shadow-card sm:p-5">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           <LifeBuoy className="h-5 w-5 text-aurora-600" />
@@ -183,8 +183,19 @@ export function BackupAssistPanel({
 
       {error && <p className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800">{error}</p>}
 
+      {busy && !result && (
+        <div className="mt-3 flex items-center gap-2 rounded-xl border border-black/[0.06] bg-aurora-50/40 p-3.5 text-sm text-aurora-700">
+          <span className="inline-flex items-end gap-0.5" aria-hidden="true">
+            <span className="thinking-dot h-1.5 w-1.5 rounded-full bg-aurora-500" />
+            <span className="thinking-dot h-1.5 w-1.5 rounded-full bg-aurora-500" />
+            <span className="thinking-dot h-1.5 w-1.5 rounded-full bg-aurora-500" />
+          </span>
+          Drafting a response…
+        </div>
+      )}
+
       {result && (
-        <div className="mt-3 rounded-xl border border-black/[0.06] bg-aurora-50/40 p-3.5">
+        <div className="animate-slide-up mt-3 rounded-xl border border-black/[0.06] bg-aurora-50/40 p-3.5">
           <div className="mb-1 flex items-center gap-2 text-[11px] font-medium">
             <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-700">
               {result.confidence} confidence

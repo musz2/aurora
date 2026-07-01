@@ -193,7 +193,7 @@ export function MeetingsPage() {
             const decisions = m.summary?.decisions?.length ?? 0;
             return (
               <Link key={m.id} to={`/app/meetings/${m.id}`}>
-                <Card className="p-5 transition hover:shadow-glass">
+                <Card interactive className="p-5">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
