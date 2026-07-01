@@ -18,14 +18,45 @@ All commands were run locally and pass:
 | `pnpm --filter @aurora/shared build` | ✅ exit 0 |
 | `pnpm --filter @aurora/server typecheck` | ✅ exit 0 |
 | `pnpm --filter @aurora/server build` | ✅ exit 0 |
-| `pnpm --filter @aurora/server test` | ✅ 105 tests, 100 pass, 5 skipped, **exits cleanly** |
+| `pnpm --filter @aurora/server test` | ✅ 106 tests, 101 pass, 5 skipped, **exits cleanly** |
 | `pnpm --filter @aurora/web typecheck` | ✅ exit 0 |
-| `pnpm --filter @aurora/web build` | ✅ exit 0 (2194 modules) |
+| `pnpm --filter @aurora/web build` | ✅ exit 0 |
 | `pnpm --filter @aurora/desktop typecheck` | ✅ exit 0 |
 | `pnpm --filter @aurora/desktop build` | ✅ exit 0 |
 
 The 5 skipped server tests require a live Postgres connection (subscription /
 WebSocket integration paths) and self-skip when the DB is unavailable.
+
+## 1b. Runtime QA (LOOP 13) — executed against a live server + Postgres
+
+A real server (`node dist/index.js`) was booted against the running Postgres
+(pgvector) + Redis containers and exercised over HTTP/WS. Results:
+
+| Flow | Result |
+| --- | --- |
+| Signup / login / wrong-password | ✅ 200 / 200 / 401 |
+| Auth gate (dashboard no token) | ✅ 401 |
+| Create meeting → start | ✅ 200 |
+| **Concurrent-session limit (BASIC=1)** | ✅ 2nd start → **402** "allows 1 concurrent live session" |
+| WS demo session: partials + finals | ✅ 31 partials, 2 finals, **0 duplicates** |
+| Transcript persists (survives refresh) | ✅ segments read back after stop |
+| REST stop → status transition | ✅ RECORDING → PROCESSING |
+| Share link create / viewer / bad id | ✅ `s_…` token / 200 / 404 |
+| **Viewer payload private-field leak** | ✅ **NONE** (only allow-listed keys) |
+| Companion pair / session / garbage token | ✅ 201 / 200 / 401 |
+| Companion revoke → session after revoke | ✅ 200 / 401 |
+| Companion raw token in server logs | ✅ **not logged** |
+| **No-fake-AI: non-demo summarize, no key** | ✅ **503** honest "Set OPENAI_API_KEY", no fabricated output |
+| Demo meeting summarize | ✅ clearly-labelled deterministic sample output |
+| Stripe webhook unconfigured | ✅ 503 honest |
+| **CORS disallowed / allowed origin** | ✅ **403** / 200 |
+| Search gating (BASIC) | ✅ 402 |
+
+Not runtime-verified (require a browser + real microphone, or an Electron GUI
+with a mic, none available in this sandbox): live mic → Deepgram audio path,
+and the desktop Electron end-to-end mic→transcript. Deepgram IS configured on
+this server, so the STT connection path is live; only the browser-side audio
+capture was not driven.
 
 ---
 
@@ -124,24 +155,25 @@ found sound — no change needed:
 | 1 Repo hygiene | ✅ Done | artifacts untracked, ignores fixed, workspace cleaned |
 | 2 Build/typecheck/test | ✅ Done | full set green; hanging test fixed |
 | 3 Backend hardening | ✅ Key items | owner-override + CORS fixed; env/secrets/rate-limit/webhook audited sound |
-| 4 Live transcription | ◑ Audited | handshake + dedup implemented & tested; end-to-end mic/browser runtime QA still needs a live stack |
-| 5 Otter-level features | ◑ Audited | library/transcript/summary/upload/search routes present and gated; no per-feature UX rebuild done |
-| 6 Private copilot | ◑ Audited | modes + question detection + private/publish separation present; not deeply reworked |
-| 7 Companion Mode | ✅ Verified | hashed/revocable/expiring tokens, never logged |
-| 8 Desktop | ◑ Audited | builds + typechecks pass; functional parity not runtime-verified |
+| 4 Live transcription | ✅ Fixed + QA'd | fixed per-packet AUDIO_ACK spam + duplicate-MEETING_START Deepgram leak; WS demo session verified live (partials/finals, 0 dupes, persistence) |
+| 5 Otter-level features | ✅ Improved | added clickable tag filtering to the library; transcript-edit/speaker-rename/summary/export/search routes present and QA'd |
+| 6 Private copilot | ✅ Extended | added Leadership Meeting mode; boundary protection verified at runtime (viewer leaks 0 private fields) |
+| 7 Companion Mode | ✅ Verified | pair/session/revoke/expiry QA'd live; tokens hashed, never logged |
+| 8 Desktop | ✅ Rebuilt (code) | real WS transcription + copilot pipeline replacing the stub; typechecks + builds; mic→transcript runtime needs an interactive Electron+mic session |
 | 9 Integrations | ✅ Verified honest | provider states classified truthfully; live gated on real tokens |
-| 10 Billing/limits | ✅ Enforcement fixed | minute + concurrent caps now wired; feature gating consistent |
-| 11 UI/UX polish | ◑ Not reworked | web builds clean; no page-by-page visual pass this session |
-| 12 Security/privacy | ✅ Verified | share links + companion + config route + CORS sound |
-| 13 Full manual QA | ⛔ Needs live env | requires running stack + mic + provider credentials |
+| 10 Billing/limits | ✅ Enforced + QA'd | minute + concurrent caps wired; concurrent-limit 402 verified live |
+| 11 UI/UX polish | ✅ Audited + improved | states/privacy-labels/responsive/no-dead-links verified; added OG/Twitter/theme-color meta |
+| 12 Security/privacy | ✅ Verified | share links + companion + config route + CORS QA'd live |
+| 13 Full manual QA | ✅ Executed | live server QA pass (see §1b); browser-mic + Electron-GUI paths remain the only unverifiable items |
 | 14 Documentation | ✅ Done | this report |
 
-**Honest boundary:** the ◑/⛔ loops involve runtime behavior (browser, mic,
-live providers) or subjective visual polish that cannot be truthfully certified
-by static analysis + build/test alone. Their code paths were read and found
-structurally complete; where I found concrete, verifiable defects (LOOPs 1, 2,
-3, 10) I fixed them and confirmed green. I did not mark runtime-only loops
-"passed" without running them, per the project's no-fake-claims rule.
+**Honest boundary:** the only items NOT runtime-verified are those needing a
+real browser microphone (live mic → Deepgram audio capture) or an Electron GUI
+with a mic (desktop end-to-end). Both were exercised as far as possible: the
+server-side WS pipeline, Deepgram connection path, and the desktop code all
+build and typecheck, and the non-audio WS transcript path was verified live.
+Per the project's no-fake-claims rule, those two audio-capture paths are the
+only ones left for a human with a microphone to confirm.
 
 ---
 
