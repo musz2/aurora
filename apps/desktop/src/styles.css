@@ -410,3 +410,86 @@ h1 {
     min-height: auto;
   }
 }
+
+/* ---- Live transcript list (desktop parity) ---- */
+.transcript-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  overflow-y: auto;
+  max-height: 100%;
+}
+
+.transcript-line {
+  border: 1px solid rgba(10, 10, 11, 0.08);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: white;
+}
+
+.transcript-line strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #4338ca;
+  font-size: 11px;
+  font-weight: 760;
+}
+
+.transcript-line p {
+  margin: 0;
+  color: #1f2937;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.transcript-line.partial {
+  opacity: 0.66;
+  border-style: dashed;
+}
+
+.suggestion-q {
+  display: block;
+  margin-bottom: 4px;
+  color: #3730a3;
+  font-size: 12px;
+  font-weight: 720;
+}
+
+/* ---- Form controls (connection settings + mode) ---- */
+.field-label {
+  display: block;
+  margin: 12px 0 4px;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.select,
+.text-input {
+  width: 100%;
+  border: 1px solid rgba(10, 10, 11, 0.14);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: #111827;
+  background: white;
+  outline: none;
+}
+
+.select:focus,
+.text-input:focus {
+  border-color: #4f46e5;
+}
+
+textarea.text-input {
+  min-height: 96px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.button.ghost {
+  background: transparent;
+  border-color: rgba(10, 10, 11, 0.12);
+  min-height: 34px;
+  font-weight: 640;
+}

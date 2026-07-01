@@ -142,6 +142,19 @@ export function ViewerPage() {
                 },
               ];
             });
+          } else if (type === "session:published-answer") {
+            // Host explicitly shared an answer — append instantly (polling is a fallback).
+            setSession((prev) =>
+              prev && !prev.publishedAnswers.some((a) => a.id === payload.id)
+                ? { ...prev, publishedAnswers: [...prev.publishedAnswers, payload] }
+                : prev
+            );
+          } else if (type === "session:published-note") {
+            setSession((prev) =>
+              prev && !prev.publishedNotes.includes(payload.note)
+                ? { ...prev, publishedNotes: [...prev.publishedNotes, payload.note] }
+                : prev
+            );
           }
         } catch {
           warn("malformed message:", String(event.data).slice(0, 120));

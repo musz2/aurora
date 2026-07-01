@@ -12,5 +12,8 @@ coverage/
 apps/server/uploads/
 apps/web/dist/
 apps/server/dist/
+apps/desktop/dist/
+apps/desktop/dist-electron/
+apps/desktop/release/
 packages/shared/dist/
 *.tsbuildinfo

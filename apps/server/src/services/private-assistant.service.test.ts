@@ -8,6 +8,7 @@ import {
   generateMockPrivateSuggestion,
   normalizeAssistantMode,
   parseAssistantIntent,
+  questionForAssistAction,
   renderSuggestionText,
 } from "./private-assistant.service.js";
 
@@ -25,6 +26,37 @@ test("normalizeAssistantMode falls back safely and includes General Meeting", ()
   assert.equal(normalizeAssistantMode("General Meeting"), "General Meeting");
   assert.equal(normalizeAssistantMode("Unknown"), "Technical Meeting");
   assert.ok(ASSISTANT_MODES.includes("General Meeting"));
+});
+
+test("Leadership Meeting is a supported mode with full structured guidance", () => {
+  assert.ok(ASSISTANT_MODES.includes("Leadership Meeting"));
+  assert.equal(normalizeAssistantMode("Leadership Meeting"), "Leadership Meeting");
+  const s = buildStructuredSuggestion({
+    mode: "Leadership Meeting",
+    question: "Should we cut the Q3 roadmap?",
+  });
+  assert.equal(s.mode, "Leadership Meeting");
+  assert.ok(s.answer.length > 0);
+  assert.ok(s.talkingPoints.length >= 2);
+  assert.ok(s.risk.length > 0);
+});
+
+test("questionForAssistAction: custom prompt wins, quick actions map, latest is null", () => {
+  // Custom prompt always wins, even with an action type set.
+  assert.equal(
+    questionForAssistAction("summarize_2min", "Answer this for the client"),
+    "Answer this for the client"
+  );
+  // Fixed quick actions map to a stable prompt.
+  assert.match(questionForAssistAction("summarize_2min", "")!, /last 2 minutes/i);
+  assert.match(questionForAssistAction("risks", undefined)!, /risks/i);
+  assert.match(questionForAssistAction("action_items", "")!, /action items/i);
+  assert.match(questionForAssistAction("talking_points", "")!, /talking points/i);
+  assert.match(questionForAssistAction("follow_up", "")!, /follow-up/i);
+  // answer_latest defers to transcript detection (null).
+  assert.equal(questionForAssistAction("answer_latest", ""), null);
+  // Unknown/no action with no prompt → a safe default (not null).
+  assert.ok(questionForAssistAction(undefined, "")!.length > 0);
 });
 
 test("parseAssistantIntent recognizes special triggers", () => {

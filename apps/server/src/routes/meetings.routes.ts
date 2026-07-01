@@ -5,7 +5,8 @@ import {
 } from "@aurora/shared";
 import { prisma } from "../lib/prisma.js";
 import { nanoid } from "nanoid";
-import { asyncHandler, notFound, badRequest } from "../utils/http.js";
+import { asyncHandler, notFound, badRequest, paymentRequired } from "../utils/http.js";
+import { PLANS, type PlanId } from "@aurora/shared";
 import { requireAuth } from "../middleware/auth.js";
 import { requireFeature } from "../config/entitlements.js";
 import {
@@ -18,9 +19,26 @@ import {
 import {
   extractActionItems,
   generateMeetingSummary,
+  generateStructuredLiveSuggestion,
   type TranscriptLine,
 } from "../services/ai.service.js";
-import { trackUsage } from "../services/usage.service.js";
+import {
+  normalizeAssistantMode,
+  parseAssistantIntent,
+  questionForAssistAction,
+  detectQuestions,
+  renderSuggestionText,
+} from "../services/private-assistant.service.js";
+import {
+  broadcastPublishedAnswer,
+  broadcastPublishedNote,
+} from "../sockets/index.js";
+import {
+  trackUsage,
+  canStartRecording,
+  getActiveSessionCount,
+  checkConcurrentAllowed,
+} from "../services/usage.service.js";
 import { writeAudit } from "../services/audit.service.js";
 import {
   exportMeeting,
@@ -134,8 +152,23 @@ router.delete(
 router.post(
   "/:id/start",
   asyncHandler(async (req, res) => {
+    const workspaceId = req.auth!.workspaceId;
+
+    // Enforce plan limits BEFORE flipping to RECORDING (LOOP 10):
+    // 1. Concurrent live sessions (seat-based).
+    const ws = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+    if (!ws) throw notFound("Workspace not found");
+    const plan = PLANS[ws.plan as PlanId];
+    const active = await getActiveSessionCount(workspaceId);
+    const concurrent = checkConcurrentAllowed(plan, active);
+    if (!concurrent.allowed) throw paymentRequired(concurrent.reason!);
+
+    // 2. Monthly transcription-minute allowance (block once the cap is hit).
+    const minutes = await canStartRecording(workspaceId, 1);
+    if (!minutes.allowed) throw paymentRequired(minutes.reason!);
+
     const meeting = await prisma.meeting.updateMany({
-      where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
+      where: { id: req.params.id, workspaceId },
       data: { status: "RECORDING", startedAt: new Date() },
     });
     if (meeting.count === 0) throw notFound("Meeting not found");
@@ -645,6 +678,121 @@ router.post(
   })
 );
 
+/**
+ * Same-page Private Copilot: generate a private answer draft from the live
+ * transcript + meeting mode + optional custom prompt / quick action. The draft
+ * is host-only — persisted as a private assistant item and NEVER shared until
+ * the host explicitly publishes it via /publish-answer.
+ */
+router.post(
+  "/:id/assist",
+  requireFeature("ai_chat"),
+  asyncHandler(async (req, res) => {
+    const meeting = await prisma.meeting.findFirst({
+      where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
+      select: { id: true, title: true, demoMode: true, workspaceId: true },
+    });
+    if (!meeting) throw notFound("Meeting not found");
+
+    const mode = normalizeAssistantMode(req.body?.mode as string | undefined);
+    const actionType = req.body?.actionType as string | undefined;
+    const customPrompt = (req.body?.customPrompt as string | undefined) ?? "";
+
+    const [recent, vocab] = await Promise.all([
+      prisma.transcriptSegment.findMany({
+        where: { meetingId: meeting.id },
+        orderBy: { startTime: "desc" },
+        take: 10,
+        select: { speakerName: true, text: true },
+      }),
+      prisma.customVocabulary.findMany({
+        where: { workspaceId: meeting.workspaceId },
+        select: { term: true },
+        take: 50,
+      }),
+    ]);
+    const ordered = recent.reverse();
+    const recentTranscript = ordered.map((s) => `${s.speakerName}: ${s.text}`).join("\n");
+
+    if (!recentTranscript && !customPrompt.trim()) {
+      throw badRequest("No transcript or prompt yet — start speaking or type a prompt.");
+    }
+
+    // Resolve the question: custom prompt > fixed quick action > latest question.
+    let question = questionForAssistAction(actionType, customPrompt);
+    if (question === null) {
+      const detected = detectQuestions(ordered.map((s) => s.text).join(" "));
+      question = detected.length
+        ? detected[detected.length - 1].question
+        : "What is the best thing to say next in this discussion?";
+    }
+
+    const intent = parseAssistantIntent(question);
+    const { suggestion, configured } = await generateStructuredLiveSuggestion({
+      question,
+      mode,
+      intent,
+      context: {
+        meetingTitle: meeting.title,
+        recentTranscript,
+        vocabulary: vocab.map((v) => v.term),
+      },
+      demoMode: meeting.demoMode,
+    });
+
+    // Persist as a PRIVATE assistant item (host-only; never shared).
+    await prisma.privateAssistSuggestion
+      .create({
+        data: {
+          meetingId: meeting.id,
+          userId: req.auth!.userId,
+          question: suggestion.question,
+          suggestion: renderSuggestionText(suggestion),
+        },
+      })
+      .catch(() => null);
+
+    res.json({ suggestion, configured });
+  })
+);
+
+/**
+ * Publish a reviewed private answer to the shared session. Only the final text
+ * is stored (no draft/prompt/context/reasoning) as a PublishedAnswer, then
+ * broadcast to connected viewers so the shared link updates instantly.
+ */
+router.post(
+  "/:id/publish-answer",
+  asyncHandler(async (req, res) => {
+    const text = (req.body?.text as string)?.trim();
+    if (!text) throw badRequest("text is required");
+    const meeting = await prisma.meeting.findFirst({
+      where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
+      select: { id: true },
+    });
+    if (!meeting) throw notFound("Meeting not found");
+    const user = await prisma.user.findUnique({
+      where: { id: req.auth!.userId },
+      select: { name: true },
+    });
+    const published = await prisma.publishedAnswer.create({
+      data: { meetingId: meeting.id, text, publishedBy: user?.name || "Host" },
+    });
+    const dto = {
+      id: published.id,
+      text: published.text,
+      publishedBy: published.publishedBy,
+      createdAt: published.createdAt.toISOString(),
+    };
+    broadcastPublishedAnswer(meeting.id, dto);
+    await writeAudit(req.auth!.workspaceId, req.auth!.userId, "published_answer", {
+      meetingId: meeting.id,
+      publishedAnswerId: published.id,
+    });
+    res.status(201).json({ published: dto });
+  })
+);
+
 /** Audit activity scoped to a single meeting (host/workspace only). */
 router.get(
   "/:id/audit",
@@ -773,6 +921,7 @@ router.post(
       where: { id: meeting.id },
       data: { publishedNotes },
     });
+    broadcastPublishedNote(meeting.id, note);
     res.json({ publishedNotes });
   })
 );

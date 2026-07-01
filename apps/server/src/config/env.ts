@@ -118,12 +118,13 @@ export const hasS3 = Boolean(env.S3_ENDPOINT && env.S3_BUCKET);
  * CORS_ALLOWED_ORIGINS. Mock-mode deployments work with just FRONTEND_URL set.
  */
 export function getAllowedOrigins(): string[] {
-  const base = [
-    env.WEB_URL,
-    env.FRONTEND_URL,
-    "http://localhost:5173",
-    "http://localhost:4173",
-  ];
+  // Configured web origins are always trusted. Localhost dev/preview hosts are
+  // only trusted OUTSIDE production, so a production deploy accepts exactly the
+  // origins it was configured with (FRONTEND_URL / WEB_URL / CORS_ALLOWED_ORIGINS).
+  const base = [env.WEB_URL, env.FRONTEND_URL];
+  if (!isProduction) {
+    base.push("http://localhost:5173", "http://localhost:4173");
+  }
   const extra = env.CORS_ALLOWED_ORIGINS.split(",").map((o) => o.trim());
   return [...new Set([...base, ...extra].filter(Boolean))];
 }

@@ -42,21 +42,21 @@ export function isDeveloperBypassUser(email: string): boolean {
 }
 
 /**
- * Whether the owner/admin BILLING override is active for this email. Two safe,
- * explicit gates (both must be opted into deliberately):
+ * Whether the owner/admin BILLING override is active for this email. Requires
+ * BOTH, deliberately opted into:
  *   1. The email is on the owner/admin allowlist, AND
- *   2. either ENABLE_OWNER_BILLING_OVERRIDE === "true" (the documented gate for
- *      local/staging/demo), or the email is in the legacy DEVELOPER_BYPASS_EMAILS
- *      list (legacy explicit opt-in).
+ *   2. ENABLE_OWNER_BILLING_OVERRIDE === "true" — the single documented gate.
  *
- * In production, leave ENABLE_OWNER_BILLING_OVERRIDE unset (and the legacy var
- * empty) so billing relies on real subscription status. This never bypasses
- * authentication — only the plan/feature gate for an authorized operator account.
+ * The override is therefore OFF by default: configuring the allowlist alone
+ * (via either OWNER_ADMIN_EMAIL or the legacy DEVELOPER_BYPASS_EMAILS) grants
+ * admin surfaces but NOT free paid features. In production, leave
+ * ENABLE_OWNER_BILLING_OVERRIDE unset so billing relies on real subscription
+ * status. This never bypasses authentication — only the plan/feature gate for
+ * an authorized operator account.
  */
 export function ownerBillingOverrideActive(email: string): boolean {
   if (!isOwnerAdmin(email)) return false;
-  if (process.env.ENABLE_OWNER_BILLING_OVERRIDE === "true") return true;
-  return parseEmails(process.env.DEVELOPER_BYPASS_EMAILS).has(email.toLowerCase());
+  return process.env.ENABLE_OWNER_BILLING_OVERRIDE === "true";
 }
 
 /**

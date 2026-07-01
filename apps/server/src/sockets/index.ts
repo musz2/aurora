@@ -337,10 +337,17 @@ export function attachSocketServer(server: Server) {
     /* ---------------------- REAL: Deepgram live STT ---------------------- */
 
     const startRealSession = (meetingId: string) => {
+      // Guard against a duplicate MEETING_START on the same socket leaking the
+      // previous Deepgram connection (and its keepAlive interval).
+      if (session.dg) {
+        session.dg.finish();
+        session.dg = null;
+      }
       session.meetingId = meetingId;
       session.startTime = Date.now();
       session.dgEvents = 0;
       session.receivedPackets = 0;
+      session.finals.reset();
 
       console.info(`[WS SERVER] meeting start accepted — meetingId=${meetingId}`);
       sendStatus({
@@ -592,13 +599,17 @@ export function attachSocketServer(server: Server) {
           console.warn(`[WS SERVER] audio chunk #${session.receivedPackets} DROPPED (session.dg is null — MEETING_START may not have been processed yet)`);
         }
 
-        // [WS SERVER] AUDIO_ACK sent received=
-        // Send AUDIO_ACK on EVERY packet so the client's no-audio timer
-        // clears as soon as the server receives the first chunk.
-        send(ws, SOCKET_EVENTS.AUDIO_ACK, {
-          received: session.receivedPackets,
-        });
-        console.info(`[WS SERVER] AUDIO_ACK sent received=${session.receivedPackets}`);
+        // Send AUDIO_ACK on the FIRST packet so the client's no-audio timer
+        // clears the instant the server receives audio, then only periodically
+        // afterwards. The client clears its timer on the first ack (later ones
+        // only feed a dev debug counter), so a per-packet ack (~4/s) is wasted
+        // frames + log spam in production.
+        if (session.receivedPackets === 1 || session.receivedPackets % 25 === 0) {
+          send(ws, SOCKET_EVENTS.AUDIO_ACK, {
+            received: session.receivedPackets,
+          });
+          console.info(`[WS SERVER] AUDIO_ACK sent received=${session.receivedPackets}`);
+        }
         return;
       }
 
@@ -746,6 +757,24 @@ function broadcastToViewers(meetingId: string, type: string, payload: unknown) {
 }
 
 /**
+ * Push a host-published answer to all connected viewers of a meeting so the
+ * shared session updates instantly (the viewer also polls as a fallback).
+ * Only the final published text is sent — never private drafts, prompts, or
+ * internal reasoning.
+ */
+export function broadcastPublishedAnswer(
+  meetingId: string,
+  answer: { id: string; text: string; publishedBy: string; createdAt: string }
+) {
+  broadcastToViewers(meetingId, SOCKET_EVENTS.PUBLISHED_ANSWER, answer);
+}
+
+/** Push a host-published note to all connected viewers of a meeting. */
+export function broadcastPublishedNote(meetingId: string, note: string) {
+  broadcastToViewers(meetingId, SOCKET_EVENTS.PUBLISHED_NOTE, { note });
+}
+
+/**
  * Attach a separate WebSocket server for shared viewers at /ws-viewer.
  * Viewers authenticate via shareId (the public share URL token) — the same
  * security model as the HTTP GET /api/sessions/:shareId endpoint.
@@ -774,7 +803,9 @@ export function attachViewerSocketServer(server: Server) {
     try {
       const meeting = await prisma.meeting.findFirst({
         where: { shareId, shared: true },
-        select: { id: true, shareExpiresAt: true },
+        // `shared` MUST be selected: isShareActive() reads meeting.shared, so
+        // omitting it makes every viewer connection fail the active check.
+        select: { id: true, shared: true, shareExpiresAt: true },
       });
       if (!meeting || !isShareActive(meeting)) {
         ws.send(JSON.stringify({ type: "error", payload: { message: "Invalid or expired share link" } }));

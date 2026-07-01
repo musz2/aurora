@@ -9,6 +9,7 @@
 # Web + desktop apps are not part of the server image.
 apps/web/dist
 apps/desktop/dist
+apps/desktop/dist-electron
 apps/desktop/release
 
 # VCS / editor / OS noise

@@ -77,7 +77,11 @@ async function authHeaders(session: TestSession): Promise<Record<string, string>
 }
 
 before(async () => {
-  process.env.DEVELOPER_BYPASS_EMAILS = "syedalicr4@gmail.com";
+  // Mark the owner account, then explicitly opt into the billing override via
+  // its documented gate — mirroring a local/staging/demo deploy. Without this
+  // gate the allowlist alone grants no free paid features (production-safe).
+  process.env.OWNER_ADMIN_EMAIL = "syedalicr4@gmail.com";
+  process.env.ENABLE_OWNER_BILLING_OVERRIDE = "true";
   const app = createApp();
   const httpServer = createServer(app);
   attachSocketServer(httpServer);
@@ -185,7 +189,7 @@ test("subscribed PRO user can access paid AI endpoint", async () => {
   assert.notEqual(res.status, 401, "PRO user should not be unauthorized");
 });
 
-test("developer bypass user syedalicr4@gmail.com can access paid AI endpoint (no sub needed)", async () => {
+test("gated owner/admin override lets syedalicr4@gmail.com access paid AI endpoint", async () => {
   const session = await createTestSession("BASIC", "syedalicr4@gmail.com");
   const res = await fetch(`${base}/api/ai/chat`, {
     method: "POST",
