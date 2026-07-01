@@ -30,6 +30,7 @@ export interface TranscriptSegmentDto {
   meetingId: string;
   speakerName: string;
   text: string;
+  cleanText?: string | null;
   startTime: number;
   endTime: number;
   confidence: number | null;

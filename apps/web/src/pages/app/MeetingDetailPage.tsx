@@ -38,7 +38,7 @@ import type {
 } from "@aurora/shared";
 
 type Tab = "summary" | "actions" | "notes" | "activity" | "chat";
-type ExportFormat = "pdf" | "docx" | "txt" | "srt" | "vtt" | "json";
+type ExportFormat = "pdf" | "docx" | "md" | "txt" | "srt" | "vtt" | "json";
 
 const SOURCE_LABEL: Record<string, string> = {
   LIVE: "Live recording",
@@ -199,9 +199,9 @@ export function MeetingDetailPage() {
             className="rounded-xl border border-black/10 bg-white px-3 py-2 text-sm text-ink outline-none focus:border-aurora-400"
             aria-label="Export format"
           >
-            {["pdf", "docx", "txt", "srt", "vtt", "json"].map((f) => (
+            {["md", "pdf", "docx", "txt", "srt", "vtt", "json"].map((f) => (
               <option key={f} value={f}>
-                {f.toUpperCase()}
+                {f === "md" ? "Markdown" : f.toUpperCase()}
               </option>
             ))}
           </select>

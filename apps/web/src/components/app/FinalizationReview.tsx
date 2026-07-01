@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Loader2,
   Sparkles,
@@ -113,14 +113,7 @@ export function FinalizationReview({
         </div>
 
         <div className="space-y-5 px-6 py-5">
-          {processing && (
-            <div className="flex items-center gap-3 rounded-xl border border-aurora-200 bg-aurora-50/60 px-4 py-3">
-              <Loader2 className="h-5 w-5 animate-spin text-aurora-600" />
-              <span className="text-sm text-ink">
-                Processing session — generating summary, decisions, and action items…
-              </span>
-            </div>
-          )}
+          {processing && <FinalizationProgress />}
 
           {meta && (
             <div
@@ -328,4 +321,47 @@ function ReadSection({
 
 function Empty({ children }: { children: React.ReactNode }) {
   return <p className="text-sm text-muted">{children}</p>;
+}
+
+/**
+ * Staged finalization progress. Reflects the real server steps (cleanup →
+ * summary → Q&A → decisions/actions → save). Advances on a timer while the
+ * finalize request is in flight; the result banner above confirms the outcome,
+ * so completion is never faked.
+ */
+const FINALIZE_STAGES = [
+  "Cleaning transcript…",
+  "Generating summary…",
+  "Extracting questions and answers…",
+  "Finding decisions and action items…",
+  "Saving meeting notes…",
+];
+
+function FinalizationProgress() {
+  const [stage, setStage] = useState(0);
+  useEffect(() => {
+    const t = setInterval(
+      () => setStage((s) => Math.min(s + 1, FINALIZE_STAGES.length - 1)),
+      900
+    );
+    return () => clearInterval(t);
+  }, []);
+  return (
+    <div className="rounded-xl border border-aurora-200 bg-aurora-50/60 px-4 py-3">
+      <ul className="space-y-1.5">
+        {FINALIZE_STAGES.map((label, i) => (
+          <li key={label} className="flex items-center gap-2 text-sm">
+            {i < stage ? (
+              <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            ) : i === stage ? (
+              <Loader2 className="h-4 w-4 animate-spin text-aurora-600" />
+            ) : (
+              <span className="h-4 w-4 rounded-full border border-black/15" />
+            )}
+            <span className={i <= stage ? "text-ink" : "text-muted"}>{label}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }

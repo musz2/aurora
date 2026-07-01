@@ -11,6 +11,7 @@ export const serializeSegment = (s: TranscriptSegment) => ({
   meetingId: s.meetingId,
   speakerName: s.speakerName,
   text: s.text,
+  cleanText: s.cleanText,
   startTime: s.startTime,
   endTime: s.endTime,
   confidence: s.confidence,
