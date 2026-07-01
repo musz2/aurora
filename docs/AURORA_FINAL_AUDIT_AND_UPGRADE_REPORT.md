@@ -266,3 +266,69 @@ See `docs/TRANSPARENT_READER_AND_SAVED_TRANSCRIPTS.md` for the user-facing guide
 - Transparent mode renders glass panels over the browser page background; a web
   page cannot make the OS/desktop behind the browser show through — this is a
   readability/layout mode, not a screen overlay, by design (and by safety policy).
+
+---
+
+## 8. Shared session hardening + interview backup (2026-07-02)
+
+Product decision: **Transparent Reader Mode was removed** (all toggle, opacity/
+glass controls, `?mode=transparent`, CSS vars, and transparent localStorage).
+The shared session is a clean, professional, solid-background read-only view.
+See `docs/SHARED_SESSION_RELIABILITY_AND_BACKUP_ASSIST.md` and
+`docs/CLEAN_SAVED_TRANSCRIPTS.md`.
+
+### Shared Session Reliability Hardening (`useSharedSession` hook)
+- **Connection state machine:** initializing, connected, receiving, stale,
+  reconnecting, offline, degraded, ended, failed (status pill + banner).
+- **WebSocket reconnect:** exponential backoff + jitter (1/2/5/10/15s cap), old
+  socket closed and listeners stripped before reconnecting; segment +
+  published-answer dedupe.
+- **Polling fallback:** ~4s public-only polling whenever the socket isn't open;
+  yields once the socket reopens.
+- **Stale detection:** live + no update ~40s, or connecting >10s → stale banner,
+  last transcript kept visible, never an infinite blank loader.
+- **Last-known-good cache:** public snapshot (transcript + published
+  answers/notes + status) in localStorage; restores on refresh/reconnect; cleared
+  on expiry/revoke/end; never bypasses an expired/invalid link (server 404 wins).
+
+### Backup Assist
+- `POST /api/shared/:shareId/backup-assist` — public, validates active share,
+  rate-limited (20/min per IP+shareId), context length capped, public data only.
+- Tries AI; falls back to the offline knowledge packs when AI is unavailable.
+- Never reads private copilot data, never persists a private item, never
+  publishes. Viewer stays read-only. Auto-surfaces when the session is troubled
+  and via a manual button.
+
+### Offline Interview Knowledge Packs
+- `packages/shared/interviewKnowledgePacks.ts` — 20 job titles, each surfacing
+  30+ senior (10+ yr) Q&A (22 shared COMMON_QA + role-specific) across 9
+  categories, plus the 5 common interviewer questions in every pack. Works fully
+  offline. One-click modal with job selector, category filters, search, and copy.
+
+### Safety / privacy boundary
+Consent-first; no stealth/hidden/screen-share-hiding/monitoring-bypass/
+proctoring-bypass/secret-recording/deception. "Private" = host-only in the
+authenticated dashboard, never hidden or bypassed. Shared viewer + public exports
+never receive private copilot drafts, prompts, or notes.
+
+### Tests added
+- `backup-assist.service.test.ts` (7): job resolution, offline entry matching,
+  always-usable offline answer, action mapping, no private wording.
+- `interview-packs.test.ts` (7): 20+ packs, 30+ entries each, 5 interviewer
+  questions per pack, valid categories, no unsafe wording, pure/offline.
+- Existing `shared-viewer.service.test.ts` proves published answers appear and
+  private drafts/prompts/notes never leak.
+
+### Verification results
+- shared build ✅ · server typecheck/build ✅ · **server test: 135 tests, 130
+  pass, 5 skipped, 0 fail** · web typecheck/build ✅ · desktop typecheck/build ✅.
+- Runtime QA (live server): Backup Assist on an active share returns a relevant
+  offline answer; revoked/invalid share → 404; no private wording; length guard
+  present; reconnect/polling/stale paths implemented.
+
+### Remaining limitations
+- The web app has no unit-test runner, so shared-session reliability and the
+  Offline Pack UI are verified via typecheck/build + runtime QA + the shared/
+  server invariant tests, not automated browser tests.
+- Backup Assist answer quality depends on `OPENAI_API_KEY`; without it the
+  offline knowledge packs are used (clearly labelled "Offline pack").
