@@ -1,12 +1,60 @@
 import type { ActionItem, Meeting, MeetingSummary, TranscriptSegment } from "@prisma/client";
+import {
+  buildSavedTranscript,
+  renderSavedTranscriptMarkdown,
+} from "./saved-transcript.service.js";
 
-export type ExportFormat = "pdf" | "docx" | "txt" | "srt" | "vtt" | "json";
+export type ExportFormat = "pdf" | "docx" | "txt" | "srt" | "vtt" | "json" | "md";
 
 export interface ExportableMeeting
   extends Meeting {
   summary: MeetingSummary | null;
   segments: TranscriptSegment[];
   actionItems: ActionItem[];
+  /** Host-published answers (public). Never includes private drafts/notes. */
+  publishedAnswers?: { text: string; publishedBy: string; createdAt: Date | string }[];
+}
+
+const SOURCE_LABEL: Record<string, string> = {
+  LIVE: "Live Meeting",
+  UPLOAD: "Upload",
+  ZOOM: "Zoom Import",
+  MEET: "Google Meet Import",
+  TEAMS: "Microsoft Teams Import",
+};
+
+/** Build the clean, structured Markdown saved-transcript for a meeting. */
+function markdown(meeting: ExportableMeeting): string {
+  const artifact = buildSavedTranscript({
+    title: meeting.title,
+    source: SOURCE_LABEL[meeting.source] ?? meeting.source,
+    durationSeconds: meeting.duration,
+    dateISO: (meeting.startedAt ?? meeting.createdAt ?? new Date()).toString(),
+    segments: meeting.segments.map((s) => ({
+      speakerName: s.speakerName,
+      text: s.text,
+      cleanText: s.cleanText,
+      startTime: s.startTime,
+    })),
+    summary: meeting.summary
+      ? {
+          overview: meeting.summary.overview,
+          keyPoints: meeting.summary.keyPoints,
+          decisions: meeting.summary.decisions,
+        }
+      : null,
+    actionItems: meeting.actionItems.map((a) => ({
+      task: a.task,
+      assigneeName: a.assigneeName,
+      dueDate: a.dueDate ? a.dueDate.toISOString() : null,
+    })),
+    publishedAnswers: (meeting.publishedAnswers ?? []).map((p) => ({
+      text: p.text,
+      publishedBy: p.publishedBy,
+      createdAt: typeof p.createdAt === "string" ? p.createdAt : p.createdAt.toISOString(),
+    })),
+  });
+  return renderSavedTranscriptMarkdown(artifact);
 }
 
 export interface ExportResult {
@@ -216,6 +264,9 @@ export function exportMeeting(meeting: ExportableMeeting, format: ExportFormat):
       contentType: "application/json",
       extension: "json",
     };
+  }
+  if (format === "md") {
+    return { buffer: Buffer.from(markdown(meeting)), contentType: "text/markdown; charset=utf-8", extension: "md" };
   }
   if (format === "srt") {
     return { buffer: Buffer.from(srt(meeting)), contentType: "application/x-subrip", extension: "srt" };

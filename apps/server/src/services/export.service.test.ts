@@ -45,6 +45,7 @@ function sampleMeeting(): ExportableMeeting {
         meetingId: "m1",
         speakerName: "Maya",
         text: "We will ship next week.",
+        cleanText: null,
         startTime: 1,
         endTime: 3,
         confidence: 0.98,
@@ -98,6 +99,35 @@ test("TXT export includes summary, decisions, action items, and transcript", () 
   assert.match(txt, /Decisions[\s\S]*Ship the campaign/); // decisions section
   assert.match(txt, /Action items[\s\S]*Send launch notes \(Maya\)/); // owner
   assert.match(txt, /Transcript[\s\S]*Maya: We will ship next week\./); // speaker + text
+});
+
+test("Markdown export renders a clean structured saved transcript", () => {
+  const meeting = sampleMeeting();
+  meeting.publishedAnswers = [
+    { text: "Our stack is Node + Postgres.", publishedBy: "Host", createdAt: new Date("2026-06-26T10:05:00.000Z") },
+  ];
+  const md = exportMeeting(meeting, "md");
+  assert.equal(md.extension, "md");
+  assert.match(md.contentType, /text\/markdown/);
+  const text = md.buffer.toString();
+  assert.match(text, /# Meeting Transcript/);
+  assert.match(text, /\*\*Meeting:\*\* Launch sync/);
+  assert.match(text, /## Summary/);
+  assert.match(text, /## Clean Transcript/);
+  assert.match(text, /## Action Items/);
+  assert.match(text, /## Host Shared Answers/);
+  assert.match(text, /Our stack is Node \+ Postgres\./); // published answer included
+});
+
+test("exports never contain private drafts, prompts, or notes", () => {
+  // ExportableMeeting has no channel for private data; prove it across formats.
+  const meeting = sampleMeeting();
+  for (const fmt of ["txt", "md", "json"] as const) {
+    const out = exportMeeting(meeting, fmt).buffer.toString();
+    assert.ok(!/private note/i.test(out));
+    assert.ok(!/private draft/i.test(out));
+    assert.ok(!/privateAssist/i.test(out));
+  }
 });
 
 test("JSON export round-trips meeting data with summary and segments", () => {
