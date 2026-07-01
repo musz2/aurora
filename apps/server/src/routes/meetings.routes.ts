@@ -8,7 +8,7 @@ import { nanoid } from "nanoid";
 import { asyncHandler, notFound, badRequest, paymentRequired } from "../utils/http.js";
 import { PLANS, type PlanId } from "@aurora/shared";
 import { requireAuth } from "../middleware/auth.js";
-import { requireFeature } from "../config/entitlements.js";
+import { requireFeature, developerLifetimeAccess } from "../config/entitlements.js";
 import {
   serializeActionItem,
   serializeMeeting,
@@ -156,18 +156,22 @@ router.post(
   asyncHandler(async (req, res) => {
     const workspaceId = req.auth!.workspaceId;
 
-    // Enforce plan limits BEFORE flipping to RECORDING (LOOP 10):
-    // 1. Concurrent live sessions (seat-based).
-    const ws = await prisma.workspace.findUnique({ where: { id: workspaceId } });
-    if (!ws) throw notFound("Workspace not found");
-    const plan = PLANS[ws.plan as PlanId];
-    const active = await getActiveSessionCount(workspaceId);
-    const concurrent = checkConcurrentAllowed(plan, active);
-    if (!concurrent.allowed) throw paymentRequired(concurrent.reason!);
+    // Developer lifetime access (owner billing override) skips usage caps. Auth
+    // and consent still apply — this only lifts billing/entitlement limits.
+    if (!developerLifetimeAccess(req.auth!.email)) {
+      // Enforce plan limits BEFORE flipping to RECORDING (LOOP 10):
+      // 1. Concurrent live sessions (seat-based).
+      const ws = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+      if (!ws) throw notFound("Workspace not found");
+      const plan = PLANS[ws.plan as PlanId];
+      const active = await getActiveSessionCount(workspaceId);
+      const concurrent = checkConcurrentAllowed(plan, active);
+      if (!concurrent.allowed) throw paymentRequired(concurrent.reason!);
 
-    // 2. Monthly transcription-minute allowance (block once the cap is hit).
-    const minutes = await canStartRecording(workspaceId, 1);
-    if (!minutes.allowed) throw paymentRequired(minutes.reason!);
+      // 2. Monthly transcription-minute allowance (block once the cap is hit).
+      const minutes = await canStartRecording(workspaceId, 1);
+      if (!minutes.allowed) throw paymentRequired(minutes.reason!);
+    }
 
     const meeting = await prisma.meeting.updateMany({
       where: { id: req.params.id, workspaceId },

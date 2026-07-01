@@ -377,3 +377,122 @@ questions); packs are pure/offline.
   roles; per-pack answer depth beyond the enriched flagship + common entries can
   keep expanding over time. No web unit-test runner exists, so the pack UI is
   verified via typecheck/build + shared/server invariant tests.
+
+---
+
+## 10. Integrations focused on five providers (2026-07-02)
+
+Product decision: Aurora supports **exactly five** integrations, all via OAuth —
+Zoom, Google Meet, Microsoft Teams (meeting platforms) and Google Calendar,
+Outlook Calendar (calendars). See `docs/INTEGRATIONS_STATUS.md`.
+
+- **Removed everywhere:** Slack, Google Drive, Dropbox, HubSpot, Salesforce,
+  Jira, Asana, Notion, Zapier, Email/SMTP export — from the shared catalog,
+  server services/routes, web UI, seed/demo data, env, and `.env.example`.
+- **OAuth only, no passwords:** `oauth.service` providers reduced to
+  google/microsoft/zoom with env-driven scopes (`GOOGLE_CALENDAR_SCOPES`,
+  `MICROSOFT_GRAPH_SCOPES`, `ZOOM_SCOPES`); tokens encrypted at rest and
+  refreshed automatically. No email/password vars anywhere (test-enforced).
+- **Honest states:** connected / needs_approval / not_configured / expired /
+  failed; unsupported providers return HTTP 404; `.env.example` documents the
+  five with redirect URIs and scopes and the "OAuth only, never passwords" note.
+- **Calendar import:** Google Calendar + Outlook Calendar events fetched live
+  with mock fallback; Zoom/Meet/Teams links detected (incl. Google
+  `hangoutLink` and Microsoft `onlineMeeting.joinUrl`) and importable. No
+  auto/bot join is claimed (not implemented).
+- **Web:** integrations dashboard grouped Meeting Platforms / Calendars with
+  connect / disconnect / test-connection, last-synced, and last-error; Drive
+  export button removed; marketing/landing lists limited to the five.
+
+### Tests (integrations.test.ts → 8)
+Catalog is exactly the five; removed providers are unsupported; categories are
+only Meeting Platforms/Calendars; `OAUTH_PROVIDER` maps only the five; env vars
+are OAuth-only (no password/SMTP/email vars); OAuth URL generation works for
+Google/Microsoft/Zoom; missing config throws honestly; Zoom/Meet/Teams link
+detection works.
+
+### Verification
+- shared build ✅ · server typecheck/build ✅ · **server test: 150 tests, 145 pass, 5 skipped, 0 fail** · web typecheck/build ✅ · desktop typecheck/build ✅.
+
+### Remaining limitations
+- Auto/bot join into live Zoom/Meet/Teams calls is intentionally not
+  implemented and not claimed. Live calendar sync requires each provider's OAuth
+  credentials; without them the provider shows "Not configured" and calendars
+  fall back to mock events with real link detection.
+
+---
+
+## 11. Developer lifetime access (owner billing override) (2026-07-02)
+
+A safe, server-side billing/entitlements override for an allow-listed
+owner/developer account. See `docs/BILLING_AND_ENTITLEMENTS.md`.
+
+- `syedalicr4@gmail.com` gets **developer lifetime access** (all paid
+  entitlements) ONLY when both are set server-side: the email is on the allowlist
+  (`DEVELOPER_BYPASS_EMAILS` / `OWNER_ADMIN_EMAIL`) AND
+  `ENABLE_OWNER_BILLING_OVERRIDE="true"`. Off by default; everyone else follows
+  normal billing.
+- Billing/entitlements ONLY — it never bypasses authentication, OAuth/provider
+  consent, meeting consent/privacy, or expands access to other users' data, and
+  it is never exposed as a frontend bypass. Email match is lowercase-normalized;
+  empty/undefined email → no override.
+- Unlocks: all plan features, unlimited meeting minutes + concurrent sessions,
+  AI copilot, exports, unlimited uploads, integrations, team/workspace, premium
+  transcript, backup assist, offline packs, future paid modules.
+- Wiring: `entitlements.ts` adds `developerLifetimeAccess` /
+  `ownerEntitlementOverride` / `billingOverrideEnabled`; applied in
+  `requireFeature`/`requirePlan` and now also lifts the usage caps in
+  `POST /meetings/:id/start` (minutes + concurrent) and `POST /uploads/*`
+  (lifetime uploads).
+- `.env.example`: `ENABLE_OWNER_BILLING_OVERRIDE=false`, `DEVELOPER_BYPASS_EMAILS=`
+  with a commented example and the "does not bypass auth/OAuth/privacy" note.
+
+### Tests (entitlements.test.ts → 10)
+Account unlocked only with gate true; not unlocked when false/unset; other
+emails pay even with gate on; case-insensitive match; unauthenticated (no email)
+never overridden; allowlist alone never unlocks paid features.
+
+### Verification
+- shared build ✅ · server typecheck/build ✅ · **server test: 154 tests, 149 pass, 5 skipped, 0 fail** · web typecheck/build ✅ · desktop typecheck/build ✅.
+
+---
+
+## 12. Production-ready authentication (2026-07-02)
+
+Audit finding: the **server** auth was already production-grade (bcrypt hashing,
+real DB login, JWT access+refresh, protected `/auth/me`, no password in
+responses, no demo login path). The "demo feel" was entirely on the frontend +
+env hardening. See `docs/AUTHENTICATION_AND_LOGIN.md`.
+
+Fixes:
+- **Removed demo login:** LoginPage no longer prefills `justin@aurora.ai` /
+  `password123` and the "Demo login is pre-filled" banner is gone. Fields start
+  empty with show/hide password and clean SaaS copy.
+- **Signup polish:** added confirm-password + show/hide + client validation
+  (min length, match), lowercase email, loading/disabled/error states.
+- **Honest password reset:** ForgotPasswordPage no longer fakes "email sent";
+  it explains reset requires an email provider and how to regain access.
+- **Session bootstrap:** persisted sessions are validated via `/auth/me` on load
+  (`bootstrapped` flag, not persisted); ProtectedRoute shows a loader until the
+  check completes — no flash of protected content, no stuck loader; expired
+  sessions redirect cleanly (the axios client refreshes once, else logs out).
+- **Env hardening:** production now **fails to boot** if `JWT_SECRET` /
+  `JWT_REFRESH_SECRET` are missing (no ephemeral secrets in prod) or if
+  `ENABLE_DEMO_AUTH=true`. Added `ENABLE_DEMO_AUTH` (dev-only, default false).
+- `.env.example`: documented the required auth vars + `ENABLE_DEMO_AUTH=false`
+  and the "production fails without these" note.
+
+### Tests (app.integration.test.ts auth flow, +6)
+Signup creates a real user+workspace and returns no password hash; duplicate
+signup rejected; login succeeds with correct password and 401s on wrong
+password / unknown user; `/auth/me` requires a valid token and leaks no hash;
+logout ok. Plus existing protected-route-401 and owner-override tests.
+
+### Verification
+- shared build ✅ · server typecheck/build ✅ · **server test: 159 tests, 154 pass, 5 skipped, 0 fail** (auth integration tests run against live Postgres) ·
+  web typecheck/build ✅ · desktop typecheck/build ✅.
+
+### Remaining limitations
+- Social login (Google/Microsoft buttons) is disabled/"coming soon" — not
+  implemented. Self-service password reset needs an email provider (honest
+  missing-config state until then).

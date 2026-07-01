@@ -3,7 +3,16 @@ import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
 import { HttpError } from "../utils/http.js";
 
-export type OAuthProvider = "google" | "microsoft" | "slack" | "hubspot" | "zoom";
+export type OAuthProvider = "google" | "microsoft" | "zoom";
+
+/** Split a space/comma-separated scope string, or undefined if empty. */
+function envScopes(raw: string): string[] | undefined {
+  const list = raw
+    .split(/[\s,]+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return list.length ? list : undefined;
+}
 
 export interface OAuthState {
   provider: OAuthProvider;
@@ -50,9 +59,13 @@ export function getOAuthConfig(provider: OAuthProvider): OAuthConfig {
       clientId: env.GOOGLE_CLIENT_ID,
       clientSecret: env.GOOGLE_CLIENT_SECRET,
       redirectUri: env.GOOGLE_REDIRECT_URI,
-      scopes: [
+      // Read-only calendar + email/profile so we can detect Google Meet links.
+      // Override via GOOGLE_CALENDAR_SCOPES.
+      scopes: envScopes(env.GOOGLE_CALENDAR_SCOPES) ?? [
         "https://www.googleapis.com/auth/calendar.readonly",
-        "https://www.googleapis.com/auth/drive.file",
+        "https://www.googleapis.com/auth/calendar.events.readonly",
+        "openid",
+        "email",
       ],
       extraAuthParams: { access_type: "offline", prompt: "consent" },
     },
@@ -62,25 +75,14 @@ export function getOAuthConfig(provider: OAuthProvider): OAuthConfig {
       clientId: env.MICROSOFT_CLIENT_ID,
       clientSecret: env.MICROSOFT_CLIENT_SECRET,
       redirectUri: env.MICROSOFT_REDIRECT_URI,
-      scopes: ["offline_access", "Calendars.Read", "User.Read", "ChannelMessage.Send"],
+      // Read-only calendar for Outlook + Teams link detection. Override via
+      // MICROSOFT_GRAPH_SCOPES.
+      scopes: envScopes(env.MICROSOFT_GRAPH_SCOPES) ?? [
+        "offline_access",
+        "Calendars.Read",
+        "User.Read",
+      ],
       tenantId: microsoftTenant(),
-    },
-    slack: {
-      authUrl: "https://slack.com/oauth/v2/authorize",
-      tokenUrl: "https://slack.com/api/oauth.v2.access",
-      clientId: env.SLACK_CLIENT_ID,
-      clientSecret: env.SLACK_CLIENT_SECRET,
-      redirectUri: env.SLACK_REDIRECT_URI,
-      scopes: ["chat:write", "channels:read", "groups:read"],
-      scopeSeparator: ",",
-    },
-    hubspot: {
-      authUrl: "https://app.hubspot.com/oauth/authorize",
-      tokenUrl: "https://api.hubapi.com/oauth/v1/token",
-      clientId: env.HUBSPOT_CLIENT_ID,
-      clientSecret: env.HUBSPOT_CLIENT_SECRET,
-      redirectUri: env.HUBSPOT_REDIRECT_URI,
-      scopes: ["crm.objects.contacts.write", "crm.objects.companies.write", "crm.objects.deals.write"],
     },
     zoom: {
       authUrl: "https://zoom.us/oauth/authorize",
@@ -89,14 +91,7 @@ export function getOAuthConfig(provider: OAuthProvider): OAuthConfig {
       clientSecret: env.ZOOM_CLIENT_SECRET,
       redirectUri: env.ZOOM_REDIRECT_URI,
       scopeSeparator: ",",
-      scopes: [
-        "meeting:read:search",
-        "user:read:user",
-        "cloud_recording:read:recording",
-        "cloud_recording:read:list_recording_files",
-        "cloud_recording:read:meeting_transcript",
-        "zoomapp:inmeeting",
-      ],
+      scopes: envScopes(env.ZOOM_SCOPES) ?? ["meeting:read:search", "user:read:user"],
     },
   };
   return configs[provider];

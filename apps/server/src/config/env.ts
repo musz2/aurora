@@ -51,39 +51,23 @@ export const env = {
   // Stripe Price IDs per paid plan (required for real checkout of that plan).
   STRIPE_PRICE_PRO: process.env.STRIPE_PRICE_PRO ?? "",
   STRIPE_PRICE_BUSINESS: process.env.STRIPE_PRICE_BUSINESS ?? "",
+  // ----- Integrations (OAuth only — never email passwords) -----
+  // Zoom
   ZOOM_CLIENT_ID: process.env.ZOOM_CLIENT_ID ?? "",
   ZOOM_CLIENT_SECRET: process.env.ZOOM_CLIENT_SECRET ?? "",
   ZOOM_REDIRECT_URI: process.env.ZOOM_REDIRECT_URI ?? "",
+  ZOOM_SCOPES: process.env.ZOOM_SCOPES ?? "",
+  // Google (Google Meet + Google Calendar)
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID ?? "",
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET ?? "",
   GOOGLE_REDIRECT_URI: process.env.GOOGLE_REDIRECT_URI ?? "",
+  GOOGLE_CALENDAR_SCOPES: process.env.GOOGLE_CALENDAR_SCOPES ?? "",
+  // Microsoft (Microsoft Teams + Outlook Calendar)
   MICROSOFT_CLIENT_ID: process.env.MICROSOFT_CLIENT_ID ?? "",
   MICROSOFT_CLIENT_SECRET: process.env.MICROSOFT_CLIENT_SECRET ?? "",
   MICROSOFT_REDIRECT_URI: process.env.MICROSOFT_REDIRECT_URI ?? "",
   MICROSOFT_TENANT_ID: process.env.MICROSOFT_TENANT_ID ?? "common",
-  SLACK_CLIENT_ID: process.env.SLACK_CLIENT_ID ?? "",
-  SLACK_CLIENT_SECRET: process.env.SLACK_CLIENT_SECRET ?? "",
-  SLACK_REDIRECT_URI: process.env.SLACK_REDIRECT_URI ?? "",
-  SLACK_BOT_TOKEN: process.env.SLACK_BOT_TOKEN ?? "",
-  SLACK_DEFAULT_CHANNEL_ID: process.env.SLACK_DEFAULT_CHANNEL_ID ?? "",
-  GOOGLE_DRIVE_FOLDER_ID: process.env.GOOGLE_DRIVE_FOLDER_ID ?? "",
-  DROPBOX_CLIENT_ID: process.env.DROPBOX_CLIENT_ID ?? "",
-  DROPBOX_CLIENT_SECRET: process.env.DROPBOX_CLIENT_SECRET ?? "",
-  HUBSPOT_ACCESS_TOKEN:
-    process.env.HUBSPOT_ACCESS_TOKEN ?? process.env.HUBSPOT_PRIVATE_APP_TOKEN ?? "",
-  HUBSPOT_CLIENT_ID: process.env.HUBSPOT_CLIENT_ID ?? "",
-  HUBSPOT_CLIENT_SECRET: process.env.HUBSPOT_CLIENT_SECRET ?? "",
-  HUBSPOT_REDIRECT_URI: process.env.HUBSPOT_REDIRECT_URI ?? "",
-  HUBSPOT_PRIVATE_APP_TOKEN: process.env.HUBSPOT_PRIVATE_APP_TOKEN ?? "",
-  SALESFORCE_CLIENT_ID: process.env.SALESFORCE_CLIENT_ID ?? "",
-  SALESFORCE_CLIENT_SECRET: process.env.SALESFORCE_CLIENT_SECRET ?? "",
-  NOTION_API_KEY: process.env.NOTION_API_KEY ?? "",
-  NOTION_DATABASE_ID: process.env.NOTION_DATABASE_ID ?? "",
-  JIRA_BASE_URL: process.env.JIRA_BASE_URL ?? "",
-  JIRA_EMAIL: process.env.JIRA_EMAIL ?? "",
-  JIRA_API_TOKEN: process.env.JIRA_API_TOKEN ?? "",
-  ASANA_ACCESS_TOKEN: process.env.ASANA_ACCESS_TOKEN ?? "",
-  ASANA_PROJECT_ID: process.env.ASANA_PROJECT_ID ?? "",
+  MICROSOFT_GRAPH_SCOPES: process.env.MICROSOFT_GRAPH_SCOPES ?? "",
   S3_ENDPOINT: process.env.S3_ENDPOINT ?? "",
   S3_ACCESS_KEY: process.env.S3_ACCESS_KEY ?? "",
   S3_SECRET_KEY: process.env.S3_SECRET_KEY ?? "",
@@ -103,6 +87,9 @@ export const env = {
   // Gate the owner/admin BILLING override. Set to "true" ONLY in local/staging/demo.
   // In production, leave unset so billing relies on real subscription status.
   ENABLE_OWNER_BILLING_OVERRIDE: process.env.ENABLE_OWNER_BILLING_OVERRIDE ?? "",
+  // Demo authentication. Never enabled in production. Only allowed for local dev
+  // when explicitly set to "true" — Aurora has no demo login path regardless.
+  ENABLE_DEMO_AUTH: process.env.ENABLE_DEMO_AUTH === "true" && process.env.NODE_ENV !== "production",
 };
 
 export const isProduction = env.NODE_ENV === "production";
@@ -145,20 +132,32 @@ export function validateEnv(): void {
     );
   }
 
-  // Non-fatal warnings: surface security/config gaps without crash-looping the
-  // deploy. JWT secrets are already auto-hardened in production (see env above).
-  const warnings: string[] = [];
+  // Fatal in production: real, stable auth secrets are required. Without them
+  // sessions can't be trusted across restarts, so we fail clearly at startup
+  // rather than silently running on ephemeral/dev secrets.
   if (isProduction) {
-    if (!process.env.JWT_SECRET || !process.env.JWT_REFRESH_SECRET) {
-      warnings.push("Set stable JWT_SECRET + JWT_REFRESH_SECRET so sessions survive restarts.");
+    const missing: string[] = [];
+    if (!process.env.JWT_SECRET) missing.push("JWT_SECRET");
+    if (!process.env.JWT_REFRESH_SECRET) missing.push("JWT_REFRESH_SECRET");
+    if (missing.length > 0) {
+      throw new Error(
+        "Invalid environment configuration:\n" +
+          missing.map((m) => `  • ${m} is required in production (set a strong, stable value).`).join("\n")
+      );
     }
-    if (getAllowedOrigins().length === 0) {
-      warnings.push("Set FRONTEND_URL (or CORS_ALLOWED_ORIGINS) to your web origin.");
+    if (process.env.ENABLE_DEMO_AUTH === "true") {
+      throw new Error(
+        "Invalid environment configuration:\n  • ENABLE_DEMO_AUTH must not be enabled in production."
+      );
     }
   }
+
+  // Non-fatal warnings.
+  const warnings: string[] = [];
+  if (isProduction && getAllowedOrigins().length === 0) {
+    warnings.push("Set FRONTEND_URL (or CORS_ALLOWED_ORIGINS) to your web origin.");
+  }
   if (warnings.length > 0) {
-    console.warn(
-      "[env] Configuration warnings:\n" + warnings.map((w) => `  • ${w}`).join("\n")
-    );
+    console.warn("[env] Configuration warnings:\n" + warnings.map((w) => `  • ${w}`).join("\n"));
   }
 }

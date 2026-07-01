@@ -57,21 +57,11 @@ export const AI_AGENTS = [
 ];
 
 export const INTEGRATIONS = [
-  { name: "Zoom", category: "Meetings", color: "#2D8CFF" },
-  { name: "Google Meet", category: "Meetings", color: "#00897B" },
-  { name: "Microsoft Teams", category: "Meetings", color: "#5059C9" },
-  { name: "Google Calendar", category: "Calendar", color: "#4285F4" },
-  { name: "Outlook Calendar", category: "Calendar", color: "#0078D4" },
-  { name: "Slack", category: "Collaboration", color: "#4A154B" },
-  { name: "Salesforce", category: "CRM", color: "#00A1E0" },
-  { name: "HubSpot", category: "CRM", color: "#FF7A59" },
-  { name: "ClickUp", category: "Tasks", color: "#7B68EE" },
-  { name: "Asana", category: "Tasks", color: "#F06A6A" },
-  { name: "Jira", category: "Tasks", color: "#0052CC" },
-  { name: "Notion", category: "Docs", color: "#000000" },
-  { name: "Google Drive", category: "Storage", color: "#1FA463" },
-  { name: "Dropbox", category: "Storage", color: "#0061FF" },
-  { name: "Zapier", category: "Automation", color: "#FF4A00" },
+  { name: "Zoom", category: "Meeting Platforms", color: "#2D8CFF" },
+  { name: "Google Meet", category: "Meeting Platforms", color: "#00897B" },
+  { name: "Microsoft Teams", category: "Meeting Platforms", color: "#5059C9" },
+  { name: "Google Calendar", category: "Calendars", color: "#4285F4" },
+  { name: "Outlook Calendar", category: "Calendars", color: "#0078D4" },
 ];
 
 export const HOW_IT_WORKS = [

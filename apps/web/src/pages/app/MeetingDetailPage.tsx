@@ -91,20 +91,6 @@ export function MeetingDetailPage() {
     },
   });
 
-  const driveExport = useMutation({
-    mutationFn: async () =>
-      (
-        await api.post("/integrations/google-drive/actions/export", {
-          meetingId: id,
-          format: exportFormat,
-        })
-      ).data as { result: { message: string; url?: string; mode: "live" | "mock" } },
-    onSuccess: (data) => {
-      toast(data.result.message, data.result.mode === "live" ? "success" : "info");
-      if (data.result.url) window.open(data.result.url, "_blank", "noopener,noreferrer");
-    },
-    onError: (err) => toast(apiError(err, "Could not export to Google Drive."), "error"),
-  });
 
   const downloadExport = async () => {
     setExporting(true);
@@ -207,14 +193,6 @@ export function MeetingDetailPage() {
           </select>
           <Button variant="outline" size="sm" onClick={downloadExport} disabled={exporting}>
             {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Export
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => driveExport.mutate()}
-            disabled={driveExport.isPending}
-          >
-            {driveExport.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Drive
           </Button>
         </div>
       </div>

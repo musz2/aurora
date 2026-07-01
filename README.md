@@ -29,7 +29,7 @@ missing. Demo sessions and demo uploads use sample data explicitly.
 - **Exports** — PDF, DOCX, TXT, SRT, VTT, and JSON
 - **Custom vocabulary**, speaker identification, audio‑playback UI
 - **Team workspace** — members, roles, invitations
-- **Integrations dashboard** — Zoom, Meet, Teams, Slack, Salesforce, HubSpot, Jira, Notion…
+- **Integrations dashboard** — Zoom, Google Meet, Microsoft Teams, Google Calendar, Outlook Calendar (OAuth only)
 - **Billing & plan limits** — Basic / Pro / Business / Enterprise with usage meters
 - **Security & governance** — consent policies, data retention, audit log model, SSO/SCIM (UI)
 - Premium landing site: cinematic video hero, features, use cases, integrations, pricing, security
@@ -240,8 +240,9 @@ provider behavior.
 Real meeting-platform auto-join requires marketplace app review and OAuth
 approval (Zoom Marketplace, Google Cloud OAuth consent, Microsoft Entra app
 registration). Aurora never does stealth joining or hidden recording — the
-recording indicator and consent flow stay visible. Until apps are approved,
-keep these integrations in mock mode.
+recording indicator and consent flow stay visible. Auto/bot join is not
+implemented and is never claimed; connected providers are used for calendar
+sync and meeting-link import only.
 
 ### Troubleshooting
 
@@ -303,8 +304,8 @@ See [`.env.example`](./.env.example). Summary:
 | Payments | "Billing not configured" (demo plan switch) | Stripe Checkout/Portal |
 | Storage | Local `apps/server/uploads` | S3‑compatible bucket |
 | Calendar detection | Mock calendar events with real Zoom/Meet/Teams link detection | Google Calendar / Outlook Calendar APIs |
-| Exports | Local generated PDF/DOCX/TXT/SRT/VTT/JSON | Same export service; Drive sync when Google is connected |
-| Integrations | Explicit `mock` action results when credentials are empty | Official provider APIs or private tokens |
+| Exports | Local generated Markdown/PDF/DOCX/TXT/SRT/VTT/JSON | Same export service |
+| Integrations | "Not configured" until OAuth env vars are set | Provider OAuth (Zoom, Google, Microsoft) — no passwords |
 
 The live session **never** falls back to demo transcript during a real recording.
 
@@ -325,28 +326,20 @@ the earlier "disconnected / DG events 0" issue. A KeepAlive ping prevents idle
 disconnects. In dev, the host console shows a debug panel (packets sent/received,
 Deepgram state + close reason, DG events, last interim/final).
 
-### Integration env vars (optional)
+### Integrations (OAuth only)
 
-Cards show **Connected**, **Disconnected**, **Mock mode**, **Failed**, or
-**Needs approval**. Mock mode is for local development only and returns explicit
-`mode: "mock"` responses. Aurora never shows a fake connected state when API
-credentials or user approval are missing.
+Aurora supports **exactly five** integrations, all via provider OAuth — Zoom,
+Google Meet, Microsoft Teams (meeting platforms) and Google Calendar, Outlook
+Calendar (calendars). **Email passwords are never stored, committed, logged, or
+used.** Cards show **Connected**, **Not configured**, **Connect / Needs
+approval**, or **Error**. Aurora never shows a fake connected state. See
+`docs/INTEGRATIONS_STATUS.md` for full setup.
 
 | Integration | Env vars |
 | --- | --- |
-| Google Meet / Calendar / Drive | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` |
-| Teams / Outlook | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_REDIRECT_URI`, `MICROSOFT_TENANT_ID` |
-| Zoom | `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET` |
-| Slack | `SLACK_CLIENT_ID`, `SLACK_CLIENT_SECRET`, `SLACK_REDIRECT_URI`, optional `SLACK_BOT_TOKEN`, `SLACK_DEFAULT_CHANNEL_ID` |
-| Google Drive | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_DRIVE_FOLDER_ID` |
-| Dropbox | `DROPBOX_CLIENT_ID`, `DROPBOX_CLIENT_SECRET` |
-| Notion | `NOTION_API_KEY`, `NOTION_DATABASE_ID` |
-| HubSpot | `HUBSPOT_ACCESS_TOKEN` or `HUBSPOT_CLIENT_ID`, `HUBSPOT_CLIENT_SECRET`, `HUBSPOT_REDIRECT_URI` |
-| Salesforce | `SALESFORCE_CLIENT_ID`, `SALESFORCE_CLIENT_SECRET` |
-| Jira | `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` |
-| Asana | `ASANA_ACCESS_TOKEN`, `ASANA_PROJECT_ID` |
-| Zapier / Webhooks | `ZAPIER_WEBHOOK_URL` |
-| Email export | `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` |
+| Google Meet + Google Calendar | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`, `GOOGLE_CALENDAR_SCOPES` |
+| Microsoft Teams + Outlook Calendar | `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, `MICROSOFT_REDIRECT_URI`, `MICROSOFT_TENANT_ID`, `MICROSOFT_GRAPH_SCOPES` |
+| Zoom | `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET`, `ZOOM_REDIRECT_URI`, `ZOOM_SCOPES` |
 
 ### OAuth setup
 
@@ -354,22 +347,20 @@ Set these callback URLs in each provider app:
 
 | Provider | Callback URL |
 | --- | --- |
-| Google | `http://localhost:4000/api/integrations/oauth/google/callback` |
-| Microsoft | `http://localhost:4000/api/integrations/oauth/microsoft/callback` |
-| Slack | `http://localhost:4000/api/integrations/oauth/slack/callback` |
-| HubSpot | `http://localhost:4000/api/integrations/oauth/hubspot/callback` |
+| Google | `<SERVER_URL>/api/integrations/oauth/google/callback` |
+| Microsoft | `<SERVER_URL>/api/integrations/oauth/microsoft/callback` |
+| Zoom | `<SERVER_URL>/api/integrations/oauth/zoom/callback` |
 
-Google scopes: Calendar read-only and Drive file creation. Microsoft scopes:
-`offline_access`, `Calendars.Read`, `User.Read`, and Teams channel message scope
-for future channel posting. Slack scopes: `chat:write`, `channels:read`, and
-`groups:read`. HubSpot can use OAuth or a private app token; Aurora creates a
-generic meeting note payload when an exact contact/company/deal association is
-not provided.
+Default scopes (override via the `*_SCOPES` env vars): Google —
+`calendar.readonly`, `calendar.events.readonly`, `openid`, `email`; Microsoft —
+`offline_access`, `Calendars.Read`, `User.Read`; Zoom — `meeting:read`,
+`user:read`. Tokens are encrypted at rest and refreshed automatically.
 
-### Mock mode vs live mode
+### Configured vs not configured
 
-If credentials are missing, Aurora stays in mock mode and returns mock action
-results. If credentials exist but the workspace has not approved OAuth, Aurora
+If a provider's OAuth credentials are missing, its card shows **Not configured**
+and calendars fall back to mock events with real link detection. When
+credentials exist but OAuth consent has not been completed, Aurora
 shows **Needs approval**. When OAuth or a supported private token is present,
 Aurora can make live calls and stores provider tokens encrypted in the existing
 integration metadata.

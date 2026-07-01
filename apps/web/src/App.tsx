@@ -37,14 +37,21 @@ import { WorkspaceSettingsPage } from "@/pages/app/WorkspaceSettingsPage";
 import { ProfilePage } from "@/pages/app/ProfilePage";
 
 export function App() {
-  const { accessToken, setUser, logout } = useAuthStore();
+  const { accessToken, setUser, logout, setBootstrapped } = useAuthStore();
 
   useEffect(() => {
-    if (!accessToken) return;
+    // Validate any persisted session on load. The API client auto-refreshes on
+    // 401; if that also fails it logs out (clears tokens → ProtectedRoute
+    // redirects). Either way we mark bootstrap complete so the UI leaves loading.
+    if (!accessToken) {
+      setBootstrapped(true);
+      return;
+    }
     api
       .get("/auth/me")
       .then(({ data }) => setUser(data.user))
-      .catch(() => logout());
+      .catch(() => logout())
+      .finally(() => setBootstrapped(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

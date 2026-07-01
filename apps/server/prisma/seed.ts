@@ -133,25 +133,25 @@ const MEETINGS: SeedMeeting[] = [
       ["Pat Reynolds", "Yesterday I finished the Terraform module for the recording workers."],
       ["Rachel Morgan", "I'll run the Jenkins pipeline to deploy it to staging this morning."],
       ["Emily Brooks", "Redis cache is healthy; queue latency is well within target."],
-      ["Justin Carter", "Any blockers? We want the Salesforce integration card live this week."],
+      ["Justin Carter", "Any blockers? We want the Outlook Calendar integration card live this week."],
       ["Pat Reynolds", "No blockers. I'll wire the integration connect flow after the deploy."],
       ["Rachel Morgan", "I'll monitor the rollout and report back in the channel."],
     ],
     overview:
-      "DevOps standup covered the Terraform module completion for recording workers, a staging deploy via Jenkins, and healthy Redis queue latency. No blockers; the Salesforce integration connect flow is next.",
+      "DevOps standup covered the Terraform module completion for recording workers, a staging deploy via Jenkins, and healthy Redis queue latency. No blockers; the Outlook Calendar integration connect flow is next.",
     keyPoints: [
       "Terraform module for recording workers is complete.",
       "Staging deploy scheduled via the Jenkins pipeline.",
       "Redis queue latency within target; no blockers.",
-      "Salesforce integration connect flow is the next deliverable.",
+      "Outlook Calendar integration connect flow is the next deliverable.",
     ],
     decisions: [
       "Deploy recording workers to staging today.",
-      "Ship the Salesforce integration card this week.",
+      "Ship the Outlook Calendar integration card this week.",
     ],
     actionItems: [
       { assignee: "Rachel Morgan", task: "Run the Jenkins pipeline to deploy workers to staging.", inDays: 0, priority: "HIGH", source: "I'll run the Jenkins pipeline to deploy it to staging." },
-      { assignee: "Pat Reynolds", task: "Wire the Salesforce integration connect flow.", inDays: 2, priority: "MEDIUM", source: "I'll wire the integration connect flow after the deploy." },
+      { assignee: "Pat Reynolds", task: "Wire the Outlook Calendar integration connect flow.", inDays: 2, priority: "MEDIUM", source: "I'll wire the integration connect flow after the deploy." },
     ],
   },
 ];
@@ -162,7 +162,7 @@ const VOCABULARY = [
   "Debug Techstudio",
   "The Career Insights",
   "Jenkins pipeline",
-  "Salesforce",
+  "Kubernetes",
   "Bench sales",
 ];
 
@@ -233,7 +233,7 @@ async function main() {
   await prisma.integration.createMany({
     data: [
       { workspaceId: workspace.id, provider: "zoom", status: "CONNECTED" },
-      { workspaceId: workspace.id, provider: "slack", status: "CONNECTED" },
+      { workspaceId: workspace.id, provider: "teams", status: "CONNECTED" },
       { workspaceId: workspace.id, provider: "google-calendar", status: "CONNECTED" },
     ],
   });

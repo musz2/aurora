@@ -59,6 +59,32 @@ export function ownerBillingOverrideActive(email: string): boolean {
   return process.env.ENABLE_OWNER_BILLING_OVERRIDE === "true";
 }
 
+/** Whether the owner billing override gate is enabled at all (env flag only). */
+export function billingOverrideEnabled(): boolean {
+  return process.env.ENABLE_OWNER_BILLING_OVERRIDE === "true";
+}
+
+/**
+ * Developer lifetime access — the internal entitlement override that grants an
+ * allow-listed owner/developer account free access to all Aurora PAID
+ * entitlements (all plan features, unlimited usage limits, exports, uploads,
+ * integrations, team features, premium transcript, backup assist, offline packs,
+ * and future paid modules).
+ *
+ * BILLING/ENTITLEMENTS ONLY. It requires a normally-authenticated user whose
+ * (lowercased) email is on the server-side allowlist AND the explicit
+ * ENABLE_OWNER_BILLING_OVERRIDE="true" gate. It never bypasses authentication,
+ * OAuth/provider consent, meeting consent/privacy, or expands access to other
+ * users' data. Server-side only; never exposed as a frontend bypass.
+ */
+export function developerLifetimeAccess(email: string | undefined | null): boolean {
+  if (!email) return false;
+  return ownerBillingOverrideActive(email);
+}
+
+/** Clear alias used at usage/billing call sites. */
+export const ownerEntitlementOverride = developerLifetimeAccess;
+
 /**
  * Express middleware factory. Requires `requireAuth` to have run first (sets
  * `req.auth` with `email` and `plan`). Checks:

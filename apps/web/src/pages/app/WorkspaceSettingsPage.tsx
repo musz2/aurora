@@ -225,7 +225,7 @@ export function WorkspaceSettingsPage() {
             <Input
               value={term}
               onChange={(e) => setTerm(e.target.value)}
-              placeholder="e.g. Kubernetes, Salesforce, The Career Insights"
+              placeholder="e.g. Kubernetes, Onboarding, The Career Insights"
             />
             <Button
               onClick={() => term && addTerm.mutate(term)}

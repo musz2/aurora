@@ -133,6 +133,75 @@ test("protected route without auth returns 401", async () => {
   assert.equal(res.status, 401);
 });
 
+/* ---------------- Real signup / login / session flow ---------------- */
+
+const jsonHeaders = { "Content-Type": "application/json" };
+const post = (path: string, body: unknown, token?: string) =>
+  fetch(`${base}${path}`, {
+    method: "POST",
+    headers: token ? { ...jsonHeaders, Authorization: `Bearer ${token}` } : jsonHeaders,
+    body: JSON.stringify(body),
+  });
+
+test("signup creates a real user + workspace and never returns a password hash", async () => {
+  const email = `authflow_${Date.now()}@test.com`;
+  const res = await post("/api/auth/signup", { name: "Auth Flow", email, password: "Str0ngPass!" });
+  assert.equal(res.status, 201);
+  const body = (await res.json()) as { user: { email: string; workspaceId: string }; accessToken: string; refreshToken: string };
+  assert.equal(body.user.email, email); // stored lowercase
+  assert.ok(body.user.workspaceId, "workspace created");
+  assert.ok(body.accessToken && body.refreshToken, "tokens issued");
+  const raw = JSON.stringify(body);
+  assert.ok(!/passwordHash|\$2[aby]\$/.test(raw), "no password hash in response");
+});
+
+test("duplicate signup is rejected", async () => {
+  const email = `dupe_${Date.now()}@test.com`;
+  const first = await post("/api/auth/signup", { name: "Dupe One", email, password: "Str0ngPass!" });
+  assert.equal(first.status, 201);
+  const second = await post("/api/auth/signup", { name: "Dupe Two", email, password: "Str0ngPass!" });
+  assert.equal(second.status, 400);
+});
+
+test("login succeeds with correct password and fails clearly with the wrong one", async () => {
+  const email = `login_${Date.now()}@test.com`;
+  await post("/api/auth/signup", { name: "Login User", email, password: "Str0ngPass!" });
+
+  const good = await post("/api/auth/login", { email, password: "Str0ngPass!" });
+  assert.equal(good.status, 200);
+  const goodBody = (await good.json()) as { accessToken: string };
+  assert.ok(goodBody.accessToken);
+
+  const bad = await post("/api/auth/login", { email, password: "wrong-password" });
+  assert.equal(bad.status, 401);
+
+  const nouser = await post("/api/auth/login", { email: `nobody_${Date.now()}@test.com`, password: "whatever12" });
+  assert.equal(nouser.status, 401);
+});
+
+test("/api/auth/me requires a valid token and returns the current user (no hash)", async () => {
+  const email = `me_${Date.now()}@test.com`;
+  const signup = await post("/api/auth/signup", { name: "Me User", email, password: "Str0ngPass!" });
+  const { accessToken } = (await signup.json()) as { accessToken: string };
+
+  const noAuth = await fetch(`${base}/api/auth/me`);
+  assert.equal(noAuth.status, 401);
+
+  const badToken = await fetch(`${base}/api/auth/me`, { headers: { Authorization: "Bearer not.a.jwt" } });
+  assert.equal(badToken.status, 401);
+
+  const ok = await fetch(`${base}/api/auth/me`, { headers: { Authorization: `Bearer ${accessToken}` } });
+  assert.equal(ok.status, 200);
+  const body = (await ok.json()) as { user: { email: string } };
+  assert.equal(body.user.email, email);
+  assert.ok(!/passwordHash|\$2[aby]\$/.test(JSON.stringify(body)));
+});
+
+test("logout responds ok (client discards tokens)", async () => {
+  const res = await post("/api/auth/logout", {});
+  assert.equal(res.status, 200);
+});
+
 test("companion pair requires host auth", async () => {
   const res = await fetch(`${base}/api/companion/pair`, {
     method: "POST",
