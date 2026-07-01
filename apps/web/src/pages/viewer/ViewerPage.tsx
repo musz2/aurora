@@ -508,7 +508,7 @@ function TransparentReader({
 
   return (
     <div
-      className="min-h-screen bg-transparent"
+      className="min-h-screen overflow-x-hidden bg-transparent"
       style={{
         ...rootStyle,
         backgroundImage: dark
