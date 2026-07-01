@@ -27,6 +27,19 @@ test("normalizeAssistantMode falls back safely and includes General Meeting", ()
   assert.ok(ASSISTANT_MODES.includes("General Meeting"));
 });
 
+test("Leadership Meeting is a supported mode with full structured guidance", () => {
+  assert.ok(ASSISTANT_MODES.includes("Leadership Meeting"));
+  assert.equal(normalizeAssistantMode("Leadership Meeting"), "Leadership Meeting");
+  const s = buildStructuredSuggestion({
+    mode: "Leadership Meeting",
+    question: "Should we cut the Q3 roadmap?",
+  });
+  assert.equal(s.mode, "Leadership Meeting");
+  assert.ok(s.answer.length > 0);
+  assert.ok(s.talkingPoints.length >= 2);
+  assert.ok(s.risk.length > 0);
+});
+
 test("parseAssistantIntent recognizes special triggers", () => {
   assert.equal(parseAssistantIntent("Summarize the last 2 minutes"), "summarize_recent");
   assert.equal(parseAssistantIntent("What should I say next?"), "next_step");

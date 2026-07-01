@@ -20,6 +20,7 @@ export const ASSISTANT_MODES = [
   "Client Call",
   "Daily Standup",
   "Recruiting",
+  "Leadership Meeting",
   "General Meeting",
 ] as const;
 

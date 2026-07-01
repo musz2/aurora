@@ -17,6 +17,7 @@ export const ASSISTANT_MODES = [
   "Client Call",
   "Daily Standup",
   "Recruiting",
+  "Leadership Meeting",
   "General Meeting",
 ] as const;
 
@@ -76,6 +77,8 @@ const MODE_GUIDANCE: Record<AssistantMode, string> = {
     "Keep it short: yesterday, today, blocker, owner, and expected unblock path.",
   Recruiting:
     "Be warm and structured: answer directly, connect to role fit, and invite the next question.",
+  "Leadership Meeting":
+    "Lead with the decision or recommendation, tie it to strategy and metrics, surface risks and tradeoffs, and name the owner and timeline.",
   "General Meeting":
     "Be clear and concise: answer directly, keep the group aligned, and confirm the next action and owner.",
 };
@@ -111,6 +114,11 @@ const MODE_TALKING_POINTS: Record<AssistantMode, string[]> = {
     "Tie it back to the role and team.",
     "Invite their next question to keep it a conversation.",
   ],
+  "Leadership Meeting": [
+    "State the recommendation and the reasoning in one line.",
+    "Ground it in the key metric or strategic goal.",
+    "Name the main risk, the owner, and the decision date.",
+  ],
   "General Meeting": [
     "Give a clear, direct answer.",
     "Keep the group aligned on the goal.",
@@ -125,6 +133,7 @@ const MODE_RISK: Record<AssistantMode, string> = {
   "Client Call": "Avoid committing to dates or scope without confirming internally.",
   "Daily Standup": "Don't let a blocker pass without naming an owner.",
   Recruiting: "Stay compliant — avoid questions/claims that aren't role-relevant.",
+  "Leadership Meeting": "Separate opinion from data, and don't let a decision leave the room without an owner and a date.",
   "General Meeting": "Make sure a decision has a clear owner before moving on.",
 };
 
@@ -182,6 +191,8 @@ function answerStem(question: string, mode: AssistantMode) {
     return `the status is on track; name the main blocker explicitly and confirm the next owner`;
   if (mode === "Client Call")
     return `let's confirm the expectation, give a realistic timeline, and send a written recap`;
+  if (mode === "Leadership Meeting")
+    return `here's the recommendation and the metric behind it; let's align on the risk, the owner, and the decision date`;
   if (mode === "General Meeting")
     return `here's the short answer, and let's confirm the owner and next step before we move on`;
   return `the safest path is to validate assumptions, isolate the dependency, and agree on a measurable next step`;
