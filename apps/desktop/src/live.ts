@@ -188,6 +188,7 @@ export function useLiveSession(): LiveSessionState {
 
   const socketRef = useRef<DesktopSocket | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const configRef = useRef<DesktopConfig | null>(null);
 
   const start = useCallback(
     async (stream: MediaStream, config: DesktopConfig, assistantMode: string): Promise<boolean> => {
@@ -211,6 +212,7 @@ export function useLiveSession(): LiveSessionState {
         });
         const id = created.meeting.id;
         setMeetingId(id);
+        configRef.current = config;
         await apiPost(config, `/meetings/${id}/start`);
 
         // 2. Open the authenticated socket and wait for it to be ready.
@@ -305,6 +307,19 @@ export function useLiveSession(): LiveSessionState {
     socketRef.current = null;
     setStatus("stopped");
     setPartial(null);
+
+    // Persist the DB transition + finalize (summary/action items). WS MEETING_STOP
+    // only stops the engine; the meeting stays RECORDING until the REST /stop runs,
+    // which would otherwise leave the session stuck and inflate concurrent counts.
+    const cfg = configRef.current;
+    if (cfg && meetingId) {
+      try {
+        await apiPost(cfg, `/meetings/${meetingId}/stop`);
+        await apiPost(cfg, `/meetings/${meetingId}/finalize`);
+      } catch {
+        /* best-effort finalize; the transcript is already persisted */
+      }
+    }
   }, [meetingId]);
 
   return {
