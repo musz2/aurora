@@ -1,52 +1,30 @@
 import type { Integration } from "@prisma/client";
 import type { IntegrationCatalogEntry } from "@aurora/shared";
-import { INTEGRATION_CATALOG } from "@aurora/shared";
+import { INTEGRATION_CATALOG, INTEGRATION_ENV_VARS, isSupportedIntegration } from "@aurora/shared";
 import { prisma } from "../lib/prisma.js";
-import { env } from "../config/env.js";
-import { HttpError } from "../utils/http.js";
-import type { ExportFormat } from "./export.service.js";
 import {
   decryptTokens,
   encryptTokens,
-  oauthConfigured,
   refreshOAuthToken,
   tokenExpired,
   type OAuthProvider,
   type OAuthTokens,
   type StoredTokenEnvelope,
 } from "./oauth.service.js";
-import {
-  postSlackSummary,
-  pushHubSpotMeetingNote,
-  uploadGoogleDriveExport,
-  type MeetingWithContent,
-} from "./provider-api.service.js";
-import { syncZoomAccount } from "./zoom.service.js";
+
+/**
+ * Integration state for the five supported providers only (Zoom, Google Meet,
+ * Microsoft Teams, Google Calendar, Outlook Calendar). All connections are
+ * OAuth-based; tokens are encrypted at rest. No passwords are ever stored.
+ */
 
 export type ProviderConnectionState =
   | "connected"
   | "disconnected"
-  | "mock"
-  | "failed"
-  | "needs_approval";
-
-export type IntegrationAction =
-  | "share-summary"
-  | "export"
-  | "sync-crm"
-  | "create-task"
-  | "import-sync";
-
-export interface IntegrationActionResult {
-  provider: string;
-  action: IntegrationAction;
-  mode: "live" | "mock";
-  ok: true;
-  message: string;
-  externalId: string;
-  url?: string;
-  lastSyncResult?: string;
-}
+  | "not_configured"
+  | "needs_approval"
+  | "expired"
+  | "failed";
 
 export interface IntegrationMetadata {
   connectionState?: ProviderConnectionState;
@@ -58,58 +36,27 @@ export interface IntegrationMetadata {
   lastSyncResult?: string;
   lastSyncAt?: string;
   lastError?: string;
-  slackChannelId?: string;
 }
 
-const PROVIDER_ENV: Record<string, string[]> = {
-  zoom: ["ZOOM_CLIENT_ID", "ZOOM_CLIENT_SECRET", "ZOOM_REDIRECT_URI"],
-  "google-calendar": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"],
-  "google-drive": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"],
-  "google-meet": ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "GOOGLE_REDIRECT_URI"],
-  "outlook-calendar": [
-    "MICROSOFT_CLIENT_ID",
-    "MICROSOFT_CLIENT_SECRET",
-    "MICROSOFT_REDIRECT_URI",
-    "MICROSOFT_TENANT_ID",
-  ],
-  teams: [
-    "MICROSOFT_CLIENT_ID",
-    "MICROSOFT_CLIENT_SECRET",
-    "MICROSOFT_REDIRECT_URI",
-    "MICROSOFT_TENANT_ID",
-  ],
-  slack: ["SLACK_CLIENT_ID", "SLACK_CLIENT_SECRET", "SLACK_REDIRECT_URI"],
-  hubspot: [],
-  salesforce: ["SALESFORCE_CLIENT_ID", "SALESFORCE_CLIENT_SECRET"],
-  notion: ["NOTION_API_KEY", "NOTION_DATABASE_ID"],
-  jira: ["JIRA_BASE_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"],
-  asana: ["ASANA_ACCESS_TOKEN", "ASANA_PROJECT_ID"],
-};
-
-const OAUTH_PROVIDER: Record<string, OAuthProvider | undefined> = {
+/** Which OAuth provider backs each supported integration. */
+export const OAUTH_PROVIDER: Record<string, OAuthProvider> = {
   "google-calendar": "google",
-  "google-drive": "google",
   "google-meet": "google",
   "outlook-calendar": "microsoft",
   teams: "microsoft",
-  slack: "slack",
-  hubspot: "hubspot",
   zoom: "zoom",
 };
 
-export function envConfigured(provider: string) {
-  if (provider === "hubspot") {
-    return Boolean(env.HUBSPOT_ACCESS_TOKEN) || oauthConfigured("hubspot");
-  }
-  if (provider === "slack") {
-    return Boolean(env.SLACK_BOT_TOKEN) || oauthConfigured("slack");
-  }
-  const required = PROVIDER_ENV[provider] ?? [];
+/** True when the provider's OAuth env vars are all set. */
+export function envConfigured(provider: string): boolean {
+  if (!isSupportedIntegration(provider)) return false;
+  const required = INTEGRATION_ENV_VARS[provider] ?? [];
   return required.length > 0 && required.every((key) => Boolean(process.env[key]));
 }
 
-export function providerNeedsApproval(provider: string) {
-  return ["google-meet", "teams"].includes(provider);
+/** Calendar providers that additionally need workspace OAuth (needs_approval). */
+export function providerNeedsApproval(provider: string): boolean {
+  return isSupportedIntegration(provider) && Boolean(OAUTH_PROVIDER[provider]);
 }
 
 function metadataOf(integration: Pick<Integration, "metadata"> | null | undefined): IntegrationMetadata {
@@ -125,39 +72,28 @@ export async function listWorkspaceIntegrations(workspaceId: string) {
 function decorateIntegration(entry: IntegrationCatalogEntry, saved?: Integration) {
   const meta = metadataOf(saved);
   const configured = envConfigured(entry.provider);
-  const privateTokenConnected =
-    (entry.provider === "hubspot" && Boolean(env.HUBSPOT_ACCESS_TOKEN)) ||
-    (entry.provider === "slack" && Boolean(env.SLACK_BOT_TOKEN));
-  const connected =
-    privateTokenConnected ||
-    (saved?.status === "CONNECTED" && Boolean(meta.tokenEnvelope));
+  const connected = saved?.status === "CONNECTED" && Boolean(meta.tokenEnvelope);
   const connectionState: ProviderConnectionState =
     meta.connectionState ??
-    (connected
-      ? "connected"
-      : configured
-        ? providerNeedsApproval(entry.provider) || OAUTH_PROVIDER[entry.provider]
-          ? "needs_approval"
-          : "disconnected"
-        : "mock");
+    (connected ? "connected" : configured ? "needs_approval" : "not_configured");
+  const state =
+    connectionState === "connected"
+      ? "CONNECTED"
+      : connectionState === "failed"
+        ? "FAILED"
+        : connectionState === "needs_approval"
+          ? "NEEDS_APPROVAL"
+          : "NOT_CONFIGURED";
   return {
     ...entry,
-    state:
-      connectionState === "connected"
-        ? "CONNECTED"
-        : connectionState === "failed"
-          ? "FAILED"
-          : connectionState === "needs_approval"
-            ? "NEEDS_APPROVAL"
-            : connectionState === "mock"
-              ? "MOCK_MODE"
-              : "DISCONNECTED",
+    state,
     connectionState,
     configured,
+    connected,
     lastSyncResult: meta.lastSyncResult ?? null,
     lastSyncAt: meta.lastSyncAt ?? null,
     lastError: meta.lastError ?? null,
-    mockMode: connectionState === "mock",
+    tokenExpiresAt: meta.tokenExpiresAt ?? null,
   };
 }
 
@@ -176,12 +112,7 @@ export async function saveOAuthTokens(params: {
     lastSyncAt: new Date().toISOString(),
   };
   return prisma.integration.upsert({
-    where: {
-      workspaceId_provider: {
-        workspaceId: params.workspaceId,
-        provider: params.provider,
-      },
-    },
+    where: { workspaceId_provider: { workspaceId: params.workspaceId, provider: params.provider } },
     create: {
       workspaceId: params.workspaceId,
       provider: params.provider,
@@ -193,31 +124,20 @@ export async function saveOAuthTokens(params: {
 }
 
 export async function disconnectIntegration(workspaceId: string, provider: string) {
+  const meta: IntegrationMetadata = {
+    connectionState: envConfigured(provider) ? "disconnected" : "not_configured",
+    disconnectedAt: new Date().toISOString(),
+    lastSyncResult: "Disconnected",
+    lastSyncAt: new Date().toISOString(),
+  };
   return prisma.integration.upsert({
     where: { workspaceId_provider: { workspaceId, provider } },
-    create: {
-      workspaceId,
-      provider,
-      status: "DISCONNECTED",
-      metadata: {
-        connectionState: envConfigured(provider) ? "disconnected" : "mock",
-        disconnectedAt: new Date().toISOString(),
-        lastSyncResult: "Disconnected",
-        lastSyncAt: new Date().toISOString(),
-      } as object,
-    },
-    update: {
-      status: "DISCONNECTED",
-      metadata: {
-        connectionState: envConfigured(provider) ? "disconnected" : "mock",
-        disconnectedAt: new Date().toISOString(),
-        lastSyncResult: "Disconnected",
-        lastSyncAt: new Date().toISOString(),
-      } as object,
-    },
+    create: { workspaceId, provider, status: "DISCONNECTED", metadata: meta as object },
+    update: { status: "DISCONNECTED", metadata: meta as object },
   });
 }
 
+/** Resolve stored OAuth tokens for a provider, refreshing them if expired. */
 export async function getProviderTokens(workspaceId: string, provider: string): Promise<OAuthTokens | null> {
   const integration = await prisma.integration.findUnique({
     where: { workspaceId_provider: { workspaceId, provider } },
@@ -243,28 +163,19 @@ export async function markIntegrationResult(params: {
     where: { workspaceId_provider: { workspaceId: params.workspaceId, provider: params.provider } },
   });
   const meta = metadataOf(existing);
-  const configured = envConfigured(params.provider);
-  const privateTokenConnected =
-    (params.provider === "hubspot" && Boolean(env.HUBSPOT_ACCESS_TOKEN)) ||
-    (params.provider === "slack" && Boolean(env.SLACK_BOT_TOKEN));
-  const status = params.ok && (existing?.status === "CONNECTED" || privateTokenConnected)
-    ? "CONNECTED"
-    : "DISCONNECTED";
   const connectionState: ProviderConnectionState = params.ok
-      ? privateTokenConnected || existing?.status === "CONNECTED"
-        ? "connected"
-        : configured
-        ? providerNeedsApproval(params.provider) || OAUTH_PROVIDER[params.provider]
-          ? "needs_approval"
-          : "disconnected"
-        : "mock"
+    ? existing?.status === "CONNECTED"
+      ? "connected"
+      : envConfigured(params.provider)
+        ? "needs_approval"
+        : "not_configured"
     : "failed";
   await prisma.integration.upsert({
     where: { workspaceId_provider: { workspaceId: params.workspaceId, provider: params.provider } },
     create: {
       workspaceId: params.workspaceId,
       provider: params.provider,
-      status,
+      status: existing?.status ?? "DISCONNECTED",
       metadata: {
         connectionState,
         lastSyncResult: params.result,
@@ -273,7 +184,7 @@ export async function markIntegrationResult(params: {
       } as object,
     },
     update: {
-      status,
+      status: existing?.status ?? "DISCONNECTED",
       metadata: {
         ...meta,
         connectionState,
@@ -283,161 +194,4 @@ export async function markIntegrationResult(params: {
       } as object,
     },
   });
-}
-
-export async function runIntegrationAction(params: {
-  workspaceId: string;
-  provider: string;
-  action: IntegrationAction;
-  meeting?: MeetingWithContent | null;
-  format?: ExportFormat;
-  channelId?: string;
-  transcriptUrl?: string;
-}): Promise<IntegrationActionResult> {
-  const configured = envConfigured(params.provider);
-  const externalId = `mock_${params.provider}_${Date.now()}`;
-  if (!configured) {
-    const result = `${params.provider} ${params.action} ran in mock mode because credentials are not configured.`;
-    await markIntegrationResult({
-      workspaceId: params.workspaceId,
-      provider: params.provider,
-      ok: true,
-      result,
-    });
-    return {
-      provider: params.provider,
-      action: params.action,
-      mode: "mock",
-      ok: true,
-      externalId,
-      message: result,
-      lastSyncResult: result,
-    };
-  }
-
-  try {
-    if (!params.meeting && ["slack", "google-drive", "hubspot", "zoom"].includes(params.provider)) {
-      const tokens = await getProviderTokens(params.workspaceId, params.provider);
-      const privateTokenReady = params.provider === "slack"
-        ? Boolean(env.SLACK_BOT_TOKEN)
-        : params.provider === "hubspot"
-          ? Boolean(env.HUBSPOT_ACCESS_TOKEN)
-          : false;
-      if (!tokens && !privateTokenReady) {
-        throw new HttpError(409, `${params.provider} needs approval before live actions can run.`);
-      }
-      const result = `${params.provider} live connection is ready.`;
-      await markIntegrationResult({ workspaceId: params.workspaceId, provider: params.provider, ok: true, result });
-      return {
-        provider: params.provider,
-        action: params.action,
-        mode: "live",
-        ok: true,
-        externalId: `live_${params.provider}_${Date.now()}`,
-        message: result,
-        lastSyncResult: result,
-      };
-    }
-
-    if (params.provider === "google-drive" && params.action === "export") {
-      if (!params.meeting) throw new HttpError(400, "meetingId is required for Drive export");
-      const tokens = await getProviderTokens(params.workspaceId, "google-drive");
-      if (!tokens) throw new HttpError(409, "Google Drive needs approval before export.");
-      const uploaded = await uploadGoogleDriveExport({
-        tokens,
-        meeting: params.meeting,
-        format: params.format ?? "pdf",
-      });
-      const result = `Exported to Google Drive: ${uploaded.url}`;
-      await markIntegrationResult({ workspaceId: params.workspaceId, provider: params.provider, ok: true, result });
-      return {
-        provider: params.provider,
-        action: params.action,
-        mode: "live",
-        ok: true,
-        externalId: uploaded.fileId,
-        url: uploaded.url,
-        message: result,
-        lastSyncResult: result,
-      };
-    }
-
-    if (params.provider === "slack" && params.action === "share-summary") {
-      if (!params.meeting) throw new HttpError(400, "meetingId is required for Slack sharing");
-      const tokens = await getProviderTokens(params.workspaceId, "slack");
-      const channelId = params.channelId || env.SLACK_DEFAULT_CHANNEL_ID;
-      if (!channelId) throw new HttpError(409, "Slack channel ID is required.");
-      const posted = await postSlackSummary({
-        tokens: tokens ?? undefined,
-        botToken: env.SLACK_BOT_TOKEN,
-        channelId,
-        meeting: params.meeting,
-        transcriptUrl: params.transcriptUrl,
-      });
-      const result = `Sent summary to Slack channel ${channelId}`;
-      await markIntegrationResult({ workspaceId: params.workspaceId, provider: params.provider, ok: true, result });
-      return {
-        provider: params.provider,
-        action: params.action,
-        mode: "live",
-        ok: true,
-        externalId: posted.messageId,
-        message: result,
-        lastSyncResult: result,
-      };
-    }
-
-    if (params.provider === "zoom" && params.action === "import-sync") {
-      const tokens = await getProviderTokens(params.workspaceId, "zoom");
-      if (!tokens) throw new HttpError(409, "Zoom is not connected. Configure Zoom OAuth first.");
-      const result = await syncZoomAccount(tokens);
-      await markIntegrationResult({
-        workspaceId: params.workspaceId,
-        provider: params.provider,
-        ok: result.ok,
-        result: result.message,
-      });
-      return {
-        provider: params.provider,
-        action: params.action,
-        mode: "live",
-        ok: true,
-        externalId: `zoom_${Date.now()}`,
-        message: result.message,
-        lastSyncResult: result.message,
-      };
-    }
-
-    if (params.provider === "hubspot" && params.action === "sync-crm") {
-      if (!params.meeting) throw new HttpError(400, "meetingId is required for HubSpot sync");
-      const tokens = await getProviderTokens(params.workspaceId, "hubspot");
-      const note = await pushHubSpotMeetingNote({
-        tokens: tokens ?? undefined,
-        accessToken: env.HUBSPOT_ACCESS_TOKEN,
-        meeting: params.meeting,
-      });
-      const result = `Created HubSpot meeting note ${note.noteId}`;
-      await markIntegrationResult({ workspaceId: params.workspaceId, provider: params.provider, ok: true, result });
-      return {
-        provider: params.provider,
-        action: params.action,
-        mode: "live",
-        ok: true,
-        externalId: note.noteId,
-        message: result,
-        lastSyncResult: result,
-      };
-    }
-
-    throw new HttpError(409, `${params.provider} live action is not implemented yet or needs provider approval.`);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Integration action failed";
-    await markIntegrationResult({
-      workspaceId: params.workspaceId,
-      provider: params.provider,
-      ok: false,
-      result: message,
-    });
-    throw err;
-  }
 }
