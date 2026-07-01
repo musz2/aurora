@@ -5,7 +5,7 @@ import { nanoid } from "nanoid";
 import { prisma } from "../lib/prisma.js";
 import { asyncHandler, badRequest } from "../utils/http.js";
 import { requireAuth } from "../middleware/auth.js";
-import { requireFeature } from "../config/entitlements.js";
+import { requireFeature, developerLifetimeAccess } from "../config/entitlements.js";
 import { storage } from "../services/storage.service.js";
 import { serializeMeeting } from "../utils/serializers.js";
 import {
@@ -146,9 +146,12 @@ const handler = asyncHandler(async (req, res) => {
     throw badRequest(`Unsupported format. Allowed: ${ALLOWED.join(", ")}`);
   }
   // Enforce the plan's lifetime import cap before doing any processing work.
-  const allowance = await canUpload(req.auth!.workspaceId);
-  if (!allowance.allowed) {
-    throw new HttpError(402, allowance.reason ?? "Upload limit reached.");
+  // Developer lifetime access (owner billing override) lifts this billing cap.
+  if (!developerLifetimeAccess(req.auth!.email)) {
+    const allowance = await canUpload(req.auth!.workspaceId);
+    if (!allowance.allowed) {
+      throw new HttpError(402, allowance.reason ?? "Upload limit reached.");
+    }
   }
   const demoMode = req.body?.mode === "demo";
   const meeting = await processUpload(

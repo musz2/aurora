@@ -419,3 +419,38 @@ detection works.
   implemented and not claimed. Live calendar sync requires each provider's OAuth
   credentials; without them the provider shows "Not configured" and calendars
   fall back to mock events with real link detection.
+
+---
+
+## 11. Developer lifetime access (owner billing override) (2026-07-02)
+
+A safe, server-side billing/entitlements override for an allow-listed
+owner/developer account. See `docs/BILLING_AND_ENTITLEMENTS.md`.
+
+- `syedalicr4@gmail.com` gets **developer lifetime access** (all paid
+  entitlements) ONLY when both are set server-side: the email is on the allowlist
+  (`DEVELOPER_BYPASS_EMAILS` / `OWNER_ADMIN_EMAIL`) AND
+  `ENABLE_OWNER_BILLING_OVERRIDE="true"`. Off by default; everyone else follows
+  normal billing.
+- Billing/entitlements ONLY — it never bypasses authentication, OAuth/provider
+  consent, meeting consent/privacy, or expands access to other users' data, and
+  it is never exposed as a frontend bypass. Email match is lowercase-normalized;
+  empty/undefined email → no override.
+- Unlocks: all plan features, unlimited meeting minutes + concurrent sessions,
+  AI copilot, exports, unlimited uploads, integrations, team/workspace, premium
+  transcript, backup assist, offline packs, future paid modules.
+- Wiring: `entitlements.ts` adds `developerLifetimeAccess` /
+  `ownerEntitlementOverride` / `billingOverrideEnabled`; applied in
+  `requireFeature`/`requirePlan` and now also lifts the usage caps in
+  `POST /meetings/:id/start` (minutes + concurrent) and `POST /uploads/*`
+  (lifetime uploads).
+- `.env.example`: `ENABLE_OWNER_BILLING_OVERRIDE=false`, `DEVELOPER_BYPASS_EMAILS=`
+  with a commented example and the "does not bypass auth/OAuth/privacy" note.
+
+### Tests (entitlements.test.ts → 10)
+Account unlocked only with gate true; not unlocked when false/unset; other
+emails pay even with gate on; case-insensitive match; unauthenticated (no email)
+never overridden; allowlist alone never unlocks paid features.
+
+### Verification
+- shared build ✅ · server typecheck/build ✅ · **server test: 154 tests, 149 pass, 5 skipped, 0 fail** · web typecheck/build ✅ · desktop typecheck/build ✅.

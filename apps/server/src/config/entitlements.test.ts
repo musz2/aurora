@@ -4,6 +4,9 @@ import {
   isOwnerAdmin,
   isDeveloperBypassUser,
   ownerBillingOverrideActive,
+  developerLifetimeAccess,
+  ownerEntitlementOverride,
+  billingOverrideEnabled,
 } from "./entitlements.js";
 
 const OWNER = "syedalicr4@gmail.com";
@@ -70,4 +73,49 @@ test("a non-owner email never gets the override, even with the flag on", () => {
   process.env.OWNER_ADMIN_EMAIL = OWNER;
   process.env.ENABLE_OWNER_BILLING_OVERRIDE = "true";
   assert.equal(ownerBillingOverrideActive("someone.else@gmail.com"), false);
+});
+
+/* ---------- Developer lifetime access (owner billing override) ---------- */
+
+test("developer lifetime access: syedalicr4@gmail.com unlocked only when gate is true", () => {
+  clearEnv();
+  process.env.DEVELOPER_BYPASS_EMAILS = OWNER;
+
+  // Gate off (default) → normal billing applies.
+  assert.equal(developerLifetimeAccess(OWNER), false);
+  assert.equal(billingOverrideEnabled(), false);
+
+  // Gate on → developer lifetime access granted.
+  process.env.ENABLE_OWNER_BILLING_OVERRIDE = "true";
+  assert.equal(billingOverrideEnabled(), true);
+  assert.equal(developerLifetimeAccess(OWNER), true);
+  assert.equal(ownerEntitlementOverride(OWNER), true);
+
+  // Gate explicitly false → no override.
+  process.env.ENABLE_OWNER_BILLING_OVERRIDE = "false";
+  assert.equal(developerLifetimeAccess(OWNER), false);
+});
+
+test("developer lifetime access matches email case-insensitively", () => {
+  clearEnv();
+  process.env.DEVELOPER_BYPASS_EMAILS = OWNER;
+  process.env.ENABLE_OWNER_BILLING_OVERRIDE = "true";
+  assert.equal(developerLifetimeAccess("SyedAliCR4@Gmail.com"), true);
+  assert.equal(developerLifetimeAccess("  syedalicr4@gmail.com  ".trim()), true);
+});
+
+test("other users must pay normally even with the gate on", () => {
+  clearEnv();
+  process.env.DEVELOPER_BYPASS_EMAILS = OWNER;
+  process.env.ENABLE_OWNER_BILLING_OVERRIDE = "true";
+  assert.equal(developerLifetimeAccess("regular.user@example.com"), false);
+});
+
+test("unauthenticated (no email) never gets developer lifetime access", () => {
+  clearEnv();
+  process.env.DEVELOPER_BYPASS_EMAILS = OWNER;
+  process.env.ENABLE_OWNER_BILLING_OVERRIDE = "true";
+  assert.equal(developerLifetimeAccess(undefined), false);
+  assert.equal(developerLifetimeAccess(null), false);
+  assert.equal(developerLifetimeAccess(""), false);
 });
