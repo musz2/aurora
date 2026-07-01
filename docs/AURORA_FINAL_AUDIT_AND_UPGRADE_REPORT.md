@@ -66,6 +66,15 @@ WebSocket integration paths) and self-skip when the DB is unavailable.
   production, so a prod deploy accepts exactly its configured origins
   (`FRONTEND_URL` / `WEB_URL` / `CORS_ALLOWED_ORIGINS`).
 
+### LOOP 10 — Billing / plan-limit enforcement
+- **Unenforced usage limits.** `canStartRecording()` (monthly transcription
+  minutes) and `checkConcurrentAllowed()` / `getActiveSessionCount()`
+  (seat-based concurrent live sessions) existed and were unit-tested but were
+  **never called** — a live meeting could always start regardless of the plan
+  cap. Wired both into `POST /api/meetings/:id/start`, which now returns HTTP
+  402 with an actionable message when the concurrent-session or monthly-minute
+  cap is reached, before flipping the meeting to `RECORDING`.
+
 ---
 
 ## 3. Safety-critical properties audited and confirmed already correct
@@ -90,33 +99,49 @@ found sound — no change needed:
   `shareExpiresAt` expiry; unsharing regenerates the id, invalidating old links.
 - **Owner allowlist** is read server-side only and never referenced in the web
   or shared bundles.
+- **Feature gating** (LOOP 10): `requireFeature`/`requirePlan` are consistently
+  applied across AI chat, advanced summaries, exports, uploads, integrations,
+  calendar, search history, custom vocabulary, and team workspace routes.
+  Upload import caps are enforced via `canUpload`.
+- **Integrations honesty** (LOOP 9): `integrations.service.ts` classifies every
+  provider as connected / disconnected / needs_approval / failed / mock, runs
+  live actions only when real tokens are present, refreshes OAuth tokens on
+  expiry, and records `lastError` on failure. No provider is claimed live while
+  mock-only.
+- **Stripe webhook** (LOOP 10): resolution is pure + unit-tested; plan
+  application via `upsert` is naturally idempotent on replayed events; plan is
+  applied only from the webhook after payment, never optimistically at checkout.
+- **Live transcription** (LOOP 4): AUDIO_READY handshake and pure final-segment
+  de-duplication helpers are implemented and unit-tested; the socket keeps a
+  bounded in-memory window of recent finals to skip duplicates on reconnect.
 
 ---
 
-## 4. Remaining work (NOT completed this session)
+## 4. Loop-by-loop status
 
-The original request defines 14 loops. This session completed LOOPs 1–2 fully
-and the highest-risk items of LOOP 3, plus verification spot-checks of LOOPs 7
-and 12. The following require dedicated follow-up and were **not** exhaustively
-executed — they are called out honestly rather than marked done:
+| Loop | Status | Notes |
+| --- | --- | --- |
+| 1 Repo hygiene | ✅ Done | artifacts untracked, ignores fixed, workspace cleaned |
+| 2 Build/typecheck/test | ✅ Done | full set green; hanging test fixed |
+| 3 Backend hardening | ✅ Key items | owner-override + CORS fixed; env/secrets/rate-limit/webhook audited sound |
+| 4 Live transcription | ◑ Audited | handshake + dedup implemented & tested; end-to-end mic/browser runtime QA still needs a live stack |
+| 5 Otter-level features | ◑ Audited | library/transcript/summary/upload/search routes present and gated; no per-feature UX rebuild done |
+| 6 Private copilot | ◑ Audited | modes + question detection + private/publish separation present; not deeply reworked |
+| 7 Companion Mode | ✅ Verified | hashed/revocable/expiring tokens, never logged |
+| 8 Desktop | ◑ Audited | builds + typechecks pass; functional parity not runtime-verified |
+| 9 Integrations | ✅ Verified honest | provider states classified truthfully; live gated on real tokens |
+| 10 Billing/limits | ✅ Enforcement fixed | minute + concurrent caps now wired; feature gating consistent |
+| 11 UI/UX polish | ◑ Not reworked | web builds clean; no page-by-page visual pass this session |
+| 12 Security/privacy | ✅ Verified | share links + companion + config route + CORS sound |
+| 13 Full manual QA | ⛔ Needs live env | requires running stack + mic + provider credentials |
+| 14 Documentation | ✅ Done | this report |
 
-- **LOOP 4** — Live transcription reliability: end-to-end runtime testing of the
-  audio/WebSocket pipeline (mic → AUDIO_READY/ACK → Deepgram → segments →
-  pause/resume/stop/finalize → reconnect dedupe) needs a running stack and a
-  browser/mic. Static structure looks complete; no runtime regression testing
-  was performed.
-- **LOOP 5** — Otter-level transcript/library/summary/upload/search upgrades:
-  feature-by-feature gap work not done here.
-- **LOOP 6** — Private copilot depth (modes, question detection, publish flow):
-  not audited in depth this session.
-- **LOOP 8** — Desktop parity (real mic → WS pipeline, live transcript,
-  assistant): builds and typechecks pass; functional parity not verified.
-- **LOOP 9** — Integrations honesty pass provider-by-provider: not done.
-- **LOOP 10** — Billing beyond the override fix (webhook idempotency, per-plan
-  limit enforcement matrix): partial (override hardened; rest not audited).
-- **LOOP 11** — UI/UX premium polish page-by-page: not done.
-- **LOOP 13** — Full manual QA run (signup → finalize → publish → companion →
-  export): not performed (needs a running environment + credentials).
+**Honest boundary:** the ◑/⛔ loops involve runtime behavior (browser, mic,
+live providers) or subjective visual polish that cannot be truthfully certified
+by static analysis + build/test alone. Their code paths were read and found
+structurally complete; where I found concrete, verifiable defects (LOOPs 1, 2,
+3, 10) I fixed them and confirmed green. I did not mark runtime-only loops
+"passed" without running them, per the project's no-fake-claims rule.
 
 ---
 
