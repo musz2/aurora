@@ -78,9 +78,12 @@ export function TranscriptTimeline({
   const [query, setQuery] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [showClean, setShowClean] = useState(true);
 
   // Keep local copy in sync when the parent reloads the meeting.
   useEffect(() => setItems(segments), [segments]);
+
+  const hasClean = useMemo(() => items.some((s) => s.cleanText && s.cleanText.trim()), [items]);
 
   const speakers = useMemo(
     () => [...new Set(items.map((s) => s.speakerName))],
@@ -156,14 +159,34 @@ export function TranscriptTimeline({
     <div className="flex h-full flex-col">
       {/* Search + speaker chips */}
       <div className="border-b border-black/[0.06] px-5 py-3">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search transcript…"
-            className="w-full rounded-xl border border-black/10 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-aurora-400"
-          />
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search transcript…"
+              className="w-full rounded-xl border border-black/10 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:border-aurora-400"
+            />
+          </div>
+          {hasClean && (
+            <div className="inline-flex shrink-0 overflow-hidden rounded-xl border border-black/10 text-xs font-medium">
+              <button
+                onClick={() => setShowClean(true)}
+                className={cn("px-2.5 py-2", showClean ? "bg-aurora-50 text-aurora-700" : "text-muted hover:text-ink")}
+                title="Show cleaned, readable transcript"
+              >
+                Clean
+              </button>
+              <button
+                onClick={() => setShowClean(false)}
+                className={cn("px-2.5 py-2", !showClean ? "bg-aurora-50 text-aurora-700" : "text-muted hover:text-ink")}
+                title="Show raw transcript as captured"
+              >
+                Raw
+              </button>
+            </div>
+          )}
         </div>
         {speakers.length > 0 && (
           <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -300,7 +323,7 @@ export function TranscriptTimeline({
                     </div>
                   ) : (
                     <p className="mt-0.5 text-sm leading-relaxed text-ink/80">
-                      {s.text}
+                      {showClean && s.cleanText && s.cleanText.trim() ? s.cleanText : s.text}
                     </p>
                   )}
                 </div>

@@ -33,6 +33,8 @@ import {
   broadcastPublishedAnswer,
   broadcastPublishedNote,
 } from "../sockets/index.js";
+import { cleanText } from "../services/transcript-cleanup.service.js";
+import { buildSavedTranscript } from "../services/saved-transcript.service.js";
 import {
   trackUsage,
   canStartRecording,
@@ -329,6 +331,14 @@ router.post(
             priority: item.priority,
             sourceText: item.sourceText,
           },
+        });
+      }
+      // Deterministic readability cleanup for every segment (always runs, even
+      // without AI). Raw `text` is preserved; `cleanText` is the polished view.
+      for (const seg of meeting.segments) {
+        await tx.transcriptSegment.update({
+          where: { id: seg.id },
+          data: { cleanText: cleanText(seg.text) },
         });
       }
       await tx.meeting.update({
@@ -882,7 +892,7 @@ router.get(
   requireFeature("exports"),
   asyncHandler(async (req, res) => {
     const format = ((req.query.format as string) ?? "txt").toLowerCase() as ExportFormat;
-    if (!["pdf", "docx", "txt", "srt", "vtt", "json"].includes(format)) {
+    if (!["pdf", "docx", "txt", "srt", "vtt", "json", "md"].includes(format)) {
       throw badRequest("Unsupported export format");
     }
     const meeting = await prisma.meeting.findFirst({
@@ -891,6 +901,7 @@ router.get(
         summary: true,
         segments: { orderBy: { startTime: "asc" } },
         actionItems: true,
+        publishedAnswers: { orderBy: { createdAt: "asc" } },
       },
     });
     if (!meeting) throw notFound("Meeting not found");
@@ -903,6 +914,57 @@ router.get(
     res.setHeader("Content-Type", headers["Content-Type"]);
     res.setHeader("Content-Disposition", headers["Content-Disposition"]);
     res.send(result.buffer);
+  })
+);
+
+/**
+ * Structured, clean saved-transcript artifact for the meeting detail page.
+ * Assembled from public/host data only (segments + summary + action items +
+ * published answers) — never private copilot drafts, prompts, or notes.
+ */
+router.get(
+  "/:id/saved-transcript",
+  asyncHandler(async (req, res) => {
+    const meeting = await prisma.meeting.findFirst({
+      where: { id: req.params.id, workspaceId: req.auth!.workspaceId },
+      include: {
+        summary: true,
+        segments: { orderBy: { startTime: "asc" } },
+        actionItems: true,
+        publishedAnswers: { orderBy: { createdAt: "asc" } },
+      },
+    });
+    if (!meeting) throw notFound("Meeting not found");
+    const savedTranscript = buildSavedTranscript({
+      title: meeting.title,
+      source: meeting.source,
+      durationSeconds: meeting.duration,
+      dateISO: (meeting.startedAt ?? meeting.createdAt).toISOString(),
+      segments: meeting.segments.map((s) => ({
+        speakerName: s.speakerName,
+        text: s.text,
+        cleanText: s.cleanText,
+        startTime: s.startTime,
+      })),
+      summary: meeting.summary
+        ? {
+            overview: meeting.summary.overview,
+            keyPoints: meeting.summary.keyPoints,
+            decisions: meeting.summary.decisions,
+          }
+        : null,
+      actionItems: meeting.actionItems.map((a) => ({
+        task: a.task,
+        assigneeName: a.assigneeName,
+        dueDate: a.dueDate ? a.dueDate.toISOString() : null,
+      })),
+      publishedAnswers: meeting.publishedAnswers.map((p) => ({
+        text: p.text,
+        publishedBy: p.publishedBy,
+        createdAt: p.createdAt.toISOString(),
+      })),
+    });
+    res.json({ savedTranscript });
   })
 );
 

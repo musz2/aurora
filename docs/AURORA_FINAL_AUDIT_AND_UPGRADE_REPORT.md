@@ -203,3 +203,132 @@ pnpm --filter @aurora/desktop typecheck && pnpm --filter @aurora/desktop build
   subscription status.
 - Provide provider keys only for integrations you actually intend to run live;
   everything else stays honestly in mock/not-configured state.
+
+---
+
+## 7. Transparent Reader Mode + Clean Saved Transcripts (2026-07-01)
+
+See `docs/TRANSPARENT_READER_AND_SAVED_TRANSCRIPTS.md` for the user-facing guide.
+
+### Transparent Reader Mode (shared viewer)
+- Added Standard / Transparent display modes to `/s/:shareId`. Default is
+  standard; the choice + all controls persist in localStorage; `?mode=transparent`
+  sets the UI only (never permissions or data access).
+- Glass panels with a compact control bar and controls for opacity
+  (30/50/70/90), font size (S/M/L), dark/light glass, and compact/expanded
+  layout, driven by CSS variables (`--viewer-opacity`, `--viewer-blur`,
+  `--viewer-font-size`, `--viewer-text-contrast`). Readable over dark + light.
+- Auto-scroll; host-published answers in a separate "Host shared answer" section
+  that highlights when a new answer arrives live over WebSocket.
+- **Safety boundary:** the shared viewer still receives ONLY transcript +
+  published answers/notes. Private copilot drafts, prompts, notes, reasoning,
+  and host controls are excluded server-side by the `sanitizePublicSession`
+  allow-list (unchanged) — transparent mode is display-only.
+
+### Clean Saved Transcript System
+- `transcript-cleanup.service` — deterministic, meaning-preserving readability
+  cleanup (fillers, spacing, punctuation, repeats, sentence casing, question
+  detection). Raw text is always preserved; runs even without AI.
+- `saved-transcript.service` — builds a structured artifact (raw + clean
+  transcript, summary, derived Q&A, decisions, action items, speaker map,
+  host-published answers) and renders polished Markdown. Public/host data only.
+- Schema: `TranscriptSegment.cleanText` (nullable) + migration `7`. Finalization
+  populates `cleanText` for every segment. `GET /meetings/:id/saved-transcript`
+  returns the artifact; serializer exposes `cleanText`.
+- Export: new **Markdown** format (structured saved transcript incl. Q&A and
+  host answers); `publishedAnswers` added to the export payload. Exports exclude
+  private prompts/drafts/notes.
+- UI: Clean/Raw transcript toggle; speaker rename (applies across the meeting);
+  staged finalization progress (cleaning → summary → Q&A → decisions/actions →
+  saving) with an honest result banner.
+
+### Tests added
+- `transcript-cleanup.service.test.ts` (7): cleanup preserves meaning, keeps raw,
+  fixes punctuation/casing, de-dupes, question detection.
+- `saved-transcript.service.test.ts` (7): raw preserved + clean added, Q&A
+  derivation, prefers persisted cleanText, markdown sections, no private fields,
+  honest missing-AI summary.
+- `export.service.test.ts` (+2): markdown export content; private-exclusion across
+  txt/md/json.
+- Existing `shared-viewer.service.test.ts` already proves published answers appear
+  and private drafts/prompts/notes never leak.
+
+### Build/test results
+- shared build ✅ · server typecheck/build ✅ · **server test: 123 tests, 118
+  pass, 5 skipped, 0 fail** · web typecheck/build ✅ · desktop typecheck/build ✅.
+- Runtime QA (live server + Postgres): finalize populates `cleanText`;
+  `GET /saved-transcript` returns the artifact; `?format=md` renders the polished
+  document; viewer WebSocket + published-answer broadcast verified previously.
+
+### Remaining limitations
+- AI summary / Q&A quality depends on `OPENAI_API_KEY`; without it, deterministic
+  cleanup runs and the summary/Q&A are honestly marked as needing a provider.
+- Transparent mode renders glass panels over the browser page background; a web
+  page cannot make the OS/desktop behind the browser show through — this is a
+  readability/layout mode, not a screen overlay, by design (and by safety policy).
+
+---
+
+## 8. Shared session hardening + interview backup (2026-07-02)
+
+Product decision: **Transparent Reader Mode was removed** (all toggle, opacity/
+glass controls, `?mode=transparent`, CSS vars, and transparent localStorage).
+The shared session is a clean, professional, solid-background read-only view.
+See `docs/SHARED_SESSION_RELIABILITY_AND_BACKUP_ASSIST.md` and
+`docs/CLEAN_SAVED_TRANSCRIPTS.md`.
+
+### Shared Session Reliability Hardening (`useSharedSession` hook)
+- **Connection state machine:** initializing, connected, receiving, stale,
+  reconnecting, offline, degraded, ended, failed (status pill + banner).
+- **WebSocket reconnect:** exponential backoff + jitter (1/2/5/10/15s cap), old
+  socket closed and listeners stripped before reconnecting; segment +
+  published-answer dedupe.
+- **Polling fallback:** ~4s public-only polling whenever the socket isn't open;
+  yields once the socket reopens.
+- **Stale detection:** live + no update ~40s, or connecting >10s → stale banner,
+  last transcript kept visible, never an infinite blank loader.
+- **Last-known-good cache:** public snapshot (transcript + published
+  answers/notes + status) in localStorage; restores on refresh/reconnect; cleared
+  on expiry/revoke/end; never bypasses an expired/invalid link (server 404 wins).
+
+### Backup Assist
+- `POST /api/shared/:shareId/backup-assist` — public, validates active share,
+  rate-limited (20/min per IP+shareId), context length capped, public data only.
+- Tries AI; falls back to the offline knowledge packs when AI is unavailable.
+- Never reads private copilot data, never persists a private item, never
+  publishes. Viewer stays read-only. Auto-surfaces when the session is troubled
+  and via a manual button.
+
+### Offline Interview Knowledge Packs
+- `packages/shared/interviewKnowledgePacks.ts` — 20 job titles, each surfacing
+  30+ senior (10+ yr) Q&A (22 shared COMMON_QA + role-specific) across 9
+  categories, plus the 5 common interviewer questions in every pack. Works fully
+  offline. One-click modal with job selector, category filters, search, and copy.
+
+### Safety / privacy boundary
+Consent-first; no stealth/hidden/screen-share-hiding/monitoring-bypass/
+proctoring-bypass/secret-recording/deception. "Private" = host-only in the
+authenticated dashboard, never hidden or bypassed. Shared viewer + public exports
+never receive private copilot drafts, prompts, or notes.
+
+### Tests added
+- `backup-assist.service.test.ts` (7): job resolution, offline entry matching,
+  always-usable offline answer, action mapping, no private wording.
+- `interview-packs.test.ts` (7): 20+ packs, 30+ entries each, 5 interviewer
+  questions per pack, valid categories, no unsafe wording, pure/offline.
+- Existing `shared-viewer.service.test.ts` proves published answers appear and
+  private drafts/prompts/notes never leak.
+
+### Verification results
+- shared build ✅ · server typecheck/build ✅ · **server test: 135 tests, 130
+  pass, 5 skipped, 0 fail** · web typecheck/build ✅ · desktop typecheck/build ✅.
+- Runtime QA (live server): Backup Assist on an active share returns a relevant
+  offline answer; revoked/invalid share → 404; no private wording; length guard
+  present; reconnect/polling/stale paths implemented.
+
+### Remaining limitations
+- The web app has no unit-test runner, so shared-session reliability and the
+  Offline Pack UI are verified via typecheck/build + runtime QA + the shared/
+  server invariant tests, not automated browser tests.
+- Backup Assist answer quality depends on `OPENAI_API_KEY`; without it the
+  offline knowledge packs are used (clearly labelled "Offline pack").

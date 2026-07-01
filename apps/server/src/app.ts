@@ -25,6 +25,7 @@ import billingRoutes from "./routes/billing.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
 import configRoutes from "./routes/config.routes.js";
 import sessionsRoutes from "./routes/sessions.routes.js";
+import sharedRoutes from "./routes/shared.routes.js";
 import calendarRoutes from "./routes/calendar.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
 import companionRoutes from "./routes/companion.routes.js";
@@ -101,9 +102,10 @@ export function createApp() {
   app.get("/api/health", healthHandler);
   app.get("/health", healthHandler);
 
-  // Public (no auth): capability config + shared session viewer.
+  // Public (no auth): capability config + shared session viewer + shared support.
   app.use("/api/config", configRoutes);
   app.use("/api/sessions", sessionsRoutes);
+  app.use("/api/shared", sharedRoutes);
 
   app.use("/api/auth", authLimiter, authRoutes);
   app.use("/api/meetings", meetingsRoutes);

@@ -219,6 +219,9 @@ model TranscriptSegment {
   meetingId  String
   speakerName String  @default("Speaker")
   text       String
+  // Deterministic (or AI-assisted) readability cleanup of `text`. Null until the
+  // meeting is finalized; the raw `text` is always preserved.
+  cleanText  String?
   startTime  Float    @default(0)
   endTime    Float    @default(0)
   confidence Float?
