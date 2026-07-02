@@ -16,6 +16,9 @@ function socketUrl(token: string | null): string {
     const url = new URL(raw);
     if (url.protocol === "http:") url.protocol = "ws:";
     if (url.protocol === "https:") url.protocol = "wss:";
+    // The host live socket is served at /ws. A configured base URL usually has
+    // no path (e.g. wss://api.example.com) — append it so the upgrade matches.
+    if (url.pathname === "" || url.pathname === "/") url.pathname = "/ws";
     url.searchParams.set("token", token ?? "");
     return url.toString();
   }
