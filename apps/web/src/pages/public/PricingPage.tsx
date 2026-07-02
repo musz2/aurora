@@ -22,27 +22,34 @@ export function PricingPage() {
       />
 
       <div className="mx-auto max-w-7xl px-6 sm:px-8">
-        <div className="mb-10 flex items-center justify-center gap-3">
-          <span className={cn("text-sm", !annual ? "text-ink" : "text-muted")}>
-            Monthly
-          </span>
-          <button
-            onClick={() => setAnnual((a) => !a)}
-            className={cn(
-              "relative h-6 w-11 rounded-full transition-colors",
-              annual ? "bg-aurora-600" : "bg-black/15"
-            )}
+        <div className="mb-10 flex flex-wrap items-center justify-between gap-4">
+          <span className="text-sm font-medium text-muted">Price in USD</span>
+          <div
+            role="group"
+            aria-label="Billing period"
+            className="inline-flex rounded-xl border border-black/[0.08] bg-white p-1"
           >
-            <span
+            <button
+              onClick={() => setAnnual(false)}
+              aria-pressed={!annual}
               className={cn(
-                "absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform",
-                annual ? "translate-x-[22px]" : "translate-x-0.5"
+                "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+                !annual ? "bg-ink text-white" : "text-muted hover:text-ink"
               )}
-            />
-          </button>
-          <span className={cn("text-sm", annual ? "text-ink" : "text-muted")}>
-            Annual <span className="text-aurora-600">(save ~20%)</span>
-          </span>
+            >
+              Pay monthly
+            </button>
+            <button
+              onClick={() => setAnnual(true)}
+              aria-pressed={annual}
+              className={cn(
+                "rounded-lg px-4 py-2 text-sm font-medium transition-colors",
+                annual ? "bg-ink text-white" : "text-muted hover:text-ink"
+              )}
+            >
+              Pay yearly <span className={annual ? "text-emerald-300" : "text-mint"}>−20%</span>
+            </button>
+          </div>
         </div>
 
         <div className="grid gap-5 lg:grid-cols-4">
@@ -53,10 +60,10 @@ export function PricingPage() {
               <div
                 key={id}
                 className={cn(
-                  "relative flex flex-col rounded-2xl border p-7",
+                  "card-lift relative flex flex-col rounded-2xl border p-7",
                   plan.highlighted
-                    ? "border-aurora-300 bg-white shadow-glow"
-                    : "border-black/[0.06] bg-white"
+                    ? "border-transparent bg-ink text-white shadow-lift"
+                    : "border-black/[0.06] bg-white shadow-card"
                 )}
               >
                 {plan.highlighted && (
@@ -64,15 +71,23 @@ export function PricingPage() {
                     Most popular
                   </span>
                 )}
-                <h3 className="font-display text-2xl text-ink">{plan.name}</h3>
-                <p className="mt-1 text-sm text-muted">{plan.tagline}</p>
-                <p className="mt-5 font-display text-4xl text-ink">
+                <h3 className={cn("font-display text-2xl", plan.highlighted ? "text-white" : "text-ink")}>
+                  {plan.name}
+                </h3>
+                <p className={cn("mt-1 text-sm", plan.highlighted ? "text-white/60" : "text-muted")}>
+                  {plan.tagline}
+                </p>
+                <p className={cn("mt-5 font-display text-4xl", plan.highlighted ? "text-white" : "text-ink")}>
                   {price === null
                     ? "Custom"
                     : price === 0
                       ? "Free"
                       : `$${price}`}
-                  {price ? <span className="text-base text-muted">/mo</span> : null}
+                  {price ? (
+                    <span className={cn("text-base", plan.highlighted ? "text-white/60" : "text-muted")}>
+                      /mo
+                    </span>
+                  ) : null}
                 </p>
                 <Button
                   to="/signup"
@@ -85,9 +100,17 @@ export function PricingPage() {
                   {plan.features.map((f) => (
                     <li
                       key={f}
-                      className="flex items-start gap-2 text-sm text-ink/80"
+                      className={cn(
+                        "flex items-start gap-2 text-sm",
+                        plan.highlighted ? "text-white/85" : "text-ink/80"
+                      )}
                     >
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-aurora-600" />
+                      <Check
+                        className={cn(
+                          "mt-0.5 h-4 w-4 shrink-0",
+                          plan.highlighted ? "text-emerald-300" : "text-aurora-600"
+                        )}
+                      />
                       {f}
                     </li>
                   ))}

@@ -5,23 +5,24 @@
    ============================================================ */
 
 :root {
-  /* Surfaces — warm off-white base, pure white cards */
-  --background: #faf9f7;
+  /* Surfaces — cool off-white base, pure white cards */
+  --background: #f7f7f9;
   --surface: #ffffff;
-  --surface-subtle: #f6f5f2;
+  --surface-subtle: #f6f6f8;
 
   /* Ink */
-  --ink: #16161a;
-  --ink-muted: #6b6b70;
+  --ink: #16161b;
+  --ink-muted: #636374;
+  --ink-ghost: #c9c9d4;
 
   /* Aurora accent ramp */
   --aurora-500: #6366f1;
   --aurora-600: #4f46e5;
-  --violet-500: #7c3aed;
-  --cyan-500: #06b6d4;
+  --mint-500: #2cb19b;
+  --lavender-500: #a855f7;
 
-  /* Type */
-  --font-display: "Instrument Serif", Georgia, serif;
+  /* Type — single tight grotesque family; display = heavier + tighter body */
+  --font-display: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-body: "Inter", ui-sans-serif, system-ui, sans-serif;
 
   /* Elevation scale (use these; avoid ad-hoc shadows) */

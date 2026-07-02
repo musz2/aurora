@@ -51,25 +51,25 @@ const columns = [
 
 export function Footer() {
   return (
-    <footer className="border-t border-black/[0.06] bg-white">
-      <div className="mx-auto max-w-7xl px-6 py-16 sm:px-8">
+    <footer className="bg-aurora-wash px-4 pb-6 pt-10 sm:px-6">
+      <div className="mx-auto max-w-7xl rounded-3xl bg-ink px-6 py-14 sm:px-12">
         <div className="grid gap-12 lg:grid-cols-6">
           <div className="lg:col-span-1">
-            <Logo />
-            <p className="mt-4 max-w-xs text-sm text-muted">
+            <Logo variant="light" />
+            <p className="mt-4 max-w-xs text-sm text-white/50">
               AI meeting assistant that turns every conversation into searchable,
               actionable intelligence.
             </p>
           </div>
           {columns.map((col) => (
             <div key={col.title}>
-              <h4 className="text-sm font-semibold text-ink">{col.title}</h4>
+              <h4 className="text-sm font-semibold text-white">{col.title}</h4>
               <ul className="mt-4 space-y-2.5">
                 {col.links.map((l) => (
                   <li key={l.label}>
                     <Link
                       to={l.to}
-                      className="text-sm text-muted transition-colors hover:text-ink"
+                      className="text-sm text-white/50 transition-colors hover:text-white"
                     >
                       {l.label}
                     </Link>
@@ -79,19 +79,19 @@ export function Footer() {
             </div>
           ))}
         </div>
-        <div className="mt-14 flex flex-col items-center justify-between gap-4 border-t border-black/[0.06] pt-8 sm:flex-row">
-          <p className="text-sm text-muted">
+        <div className="mt-14 flex flex-col items-center justify-between gap-4 border-t border-white/10 pt-8 sm:flex-row">
+          <p className="text-sm text-white/50">
             © {new Date().getFullYear()} Aurora.ai — Consent-first meeting
             intelligence.
           </p>
-          <div className="flex gap-6 text-sm text-muted">
-            <Link to="/security" className="hover:text-ink">
+          <div className="flex gap-6 text-sm text-white/50">
+            <Link to="/security" className="transition-colors hover:text-white">
               Privacy
             </Link>
-            <Link to="/security" className="hover:text-ink">
+            <Link to="/security" className="transition-colors hover:text-white">
               Terms
             </Link>
-            <Link to="/security" className="hover:text-ink">
+            <Link to="/security" className="transition-colors hover:text-white">
               Consent Policy
             </Link>
           </div>

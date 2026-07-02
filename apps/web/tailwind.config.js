@@ -8,9 +8,15 @@ export default {
         sans: ['"Inter"', "ui-sans-serif", "system-ui", "sans-serif"],
       },
       colors: {
-        ink: "#16161A",
-        muted: "#6B6B70",
-        canvas: "#FAF9F7",
+        ink: "#16161B",
+        muted: "#636374",
+        canvas: "#F7F7F9",
+        ghost: {
+          DEFAULT: "#C9C9D4",
+          light: "#E2E2EA",
+        },
+        mint: "#2CB19B",
+        periwinkle: "#898DFC",
         aurora: {
           50: "#eef2ff",
           100: "#e0e7ff",
@@ -28,9 +34,11 @@ export default {
       },
       backgroundImage: {
         "aurora-gradient":
-          "linear-gradient(120deg, #6366f1 0%, #7c3aed 45%, #06b6d4 100%)",
+          "linear-gradient(100deg, #2CB19B 0%, #6366F1 55%, #A855F7 100%)",
         "aurora-radial":
-          "radial-gradient(1200px 600px at 50% -10%, rgba(99,102,241,0.25), transparent 60%)",
+          "radial-gradient(1200px 600px at 50% -10%, rgba(99,102,241,0.18), transparent 60%)",
+        "aurora-wash":
+          "linear-gradient(115deg, rgba(44,177,155,0.16) 0%, rgba(137,141,252,0.14) 45%, rgba(218,126,247,0.16) 100%)",
       },
       boxShadow: {
         glass: "0 8px 40px rgba(15, 23, 42, 0.12)",

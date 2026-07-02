@@ -41,14 +41,16 @@ export function Navbar() {
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 sm:px-8">
         <Logo />
 
-        <div className="hidden items-center gap-8 md:flex">
+        <div className="hidden items-center gap-2 md:flex">
           {links.map((l) => (
             <Link
               key={l.to}
               to={l.to}
               className={cn(
-                "text-sm transition-colors hover:text-ink",
-                pathname === l.to ? "text-ink" : "text-muted"
+                "rounded-full px-3 py-1.5 text-sm font-medium transition-colors hover:text-ink",
+                pathname === l.to
+                  ? "bg-black/[0.05] text-ink"
+                  : "text-muted hover:bg-black/[0.03]"
               )}
             >
               {l.label}

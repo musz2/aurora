@@ -8,8 +8,7 @@ import {
   Quote,
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { Badge, SectionHeading } from "@/components/ui/primitives";
-import { HeroVideo } from "@/components/marketing/HeroVideo";
+import { SectionHeading } from "@/components/ui/primitives";
 import { HeroPreview } from "@/components/marketing/HeroPreview";
 import {
   CORE_FEATURES,
@@ -43,53 +42,43 @@ export function LandingPage() {
     <div className="relative overflow-hidden bg-background">
       {/* ---------- HERO ---------- */}
       <div className="relative min-h-screen w-full overflow-hidden">
-        <HeroVideo />
+        {/* Soft aurora wash + radial glow backdrop (video retired for the
+            minimal ink-on-paper hero — HeroVideo component kept unused). */}
+        <div className="absolute inset-x-0 top-0 z-0 h-[520px] bg-aurora-wash opacity-60 [mask-image:linear-gradient(to_bottom,black,transparent)]" />
         <div className="absolute inset-0 z-0 bg-aurora-radial" />
 
         <div
           className="relative z-10 mx-auto flex max-w-7xl flex-col items-center px-6 text-center"
           style={{ paddingTop: "calc(9rem - 40px)" }}
         >
-          <div className="animate-fade-rise">
-            <Badge tone="indigo" className="mb-6 px-4 py-1.5">
-              <Sparkles className="h-3.5 w-3.5" />
-              AI Meeting Assistant & Meeting Knowledge Platform
-            </Badge>
-          </div>
+          <p className="animate-fade-rise text-sm font-semibold text-ink/70 sm:text-base">
+            AI Meeting Assistant &amp; Meeting Knowledge Platform
+          </p>
 
           <h1
-            className="animate-fade-rise font-display font-normal text-ink"
+            className="animate-fade-rise mt-4 font-display text-ink"
             style={{
-              fontSize: "clamp(2.75rem, 7vw, 6rem)",
-              lineHeight: "0.98",
-              letterSpacing: "-2.46px",
-              maxWidth: "70rem",
+              fontSize: "clamp(2.9rem, 7.2vw, 6.25rem)",
+              lineHeight: "1.02",
+              letterSpacing: "-0.035em",
+              maxWidth: "68rem",
             }}
           >
-            Turn every <span style={{ color: "#6F6F6F" }}>meeting</span> into
-            searchable <span style={{ color: "#6F6F6F" }}>intelligence.</span>
+            Turn every meeting into searchable intelligence.
           </h1>
 
-          <p
-            className="animate-fade-rise-delay mt-8 max-w-2xl text-base leading-relaxed sm:text-lg"
-            style={{ color: "#6F6F6F" }}
-          >
+          <p className="animate-fade-rise-delay mt-6 max-w-xl text-base leading-relaxed text-muted sm:text-lg">
             Aurora records, transcribes, summarizes, detects action items, and
-            helps you ask questions across every meeting — consent-first and
+            answers questions across every meeting — consent-first and
             enterprise-ready.
           </p>
 
-          <div className="animate-fade-rise-delay-2 mt-12 flex flex-col items-center gap-4 sm:flex-row">
-            <Button to="/signup" size="lg" className="px-12 py-5">
-              Start Free
+          <div className="animate-fade-rise-delay-2 mt-10 flex flex-col items-center gap-5 sm:flex-row">
+            <Button to="/signup" variant="secondary" size="lg" className="px-12 py-4">
+              Get Started for Free
             </Button>
-            <Button
-              to="/features"
-              variant="outline"
-              size="lg"
-              className="px-10 py-5"
-            >
-              Watch Demo
+            <Button to="/features" variant="ghost" size="lg" className="px-6">
+              Watch demo <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
 
@@ -99,7 +88,9 @@ export function LandingPage() {
           </div>
 
           <div className="mt-16 w-full pb-24">
-            <HeroPreview />
+            <div className="glow-frame overflow-hidden rounded-3xl">
+              <HeroPreview />
+            </div>
           </div>
         </div>
       </div>
@@ -146,7 +137,8 @@ export function LandingPage() {
       </Section>
 
       {/* ---------- SOLUTION ---------- */}
-      <Section className="bg-ink text-white">
+      <Section className="!px-4 sm:!px-6">
+        <div className="rounded-3xl bg-ink px-6 py-16 text-white sm:px-12">
         <SectionHeading
           center
           eyebrow="How Aurora solves it"
@@ -171,6 +163,7 @@ export function LandingPage() {
               <p className="mt-2 text-sm text-white/60">{s.desc}</p>
             </motion.div>
           ))}
+        </div>
         </div>
       </Section>
 
@@ -248,7 +241,8 @@ export function LandingPage() {
       </Section>
 
       {/* ---------- INTEGRATIONS ---------- */}
-      <Section className="bg-ink text-white">
+      <Section className="!px-4 sm:!px-6">
+        <div className="rounded-3xl bg-ink px-6 py-16 text-white sm:px-12">
         <SectionHeading
           center
           eyebrow="Integrations"
@@ -274,6 +268,7 @@ export function LandingPage() {
               </div>
             </div>
           ))}
+        </div>
         </div>
       </Section>
 
@@ -367,10 +362,10 @@ export function LandingPage() {
             return (
               <div
                 key={id}
-                className={`relative rounded-2xl border p-6 ${
+                className={`card-lift relative rounded-2xl border p-6 ${
                   plan.highlighted
-                    ? "border-aurora-300 bg-white shadow-glow"
-                    : "border-black/[0.06] bg-white"
+                    ? "border-transparent bg-ink text-white shadow-lift"
+                    : "border-black/[0.06] bg-white shadow-card"
                 }`}
               >
                 {plan.highlighted && (
@@ -378,25 +373,37 @@ export function LandingPage() {
                     Most popular
                   </span>
                 )}
-                <h3 className="font-display text-2xl text-ink">{plan.name}</h3>
-                <p className="mt-1 text-sm text-muted">{plan.tagline}</p>
-                <p className="mt-4 font-display text-4xl text-ink">
+                <h3 className={`font-display text-2xl ${plan.highlighted ? "text-white" : "text-ink"}`}>
+                  {plan.name}
+                </h3>
+                <p className={`mt-1 text-sm ${plan.highlighted ? "text-white/60" : "text-muted"}`}>
+                  {plan.tagline}
+                </p>
+                <p className={`mt-4 font-display text-4xl ${plan.highlighted ? "text-white" : "text-ink"}`}>
                   {plan.priceMonthly === null
                     ? "Custom"
                     : plan.priceMonthly === 0
                       ? "Free"
                       : `$${plan.priceMonthly}`}
                   {plan.priceMonthly ? (
-                    <span className="text-base text-muted">/mo</span>
+                    <span className={`text-base ${plan.highlighted ? "text-white/60" : "text-muted"}`}>
+                      /mo
+                    </span>
                   ) : null}
                 </p>
                 <ul className="mt-5 space-y-2">
                   {plan.features.slice(0, 5).map((f) => (
                     <li
                       key={f}
-                      className="flex items-start gap-2 text-sm text-ink/80"
+                      className={`flex items-start gap-2 text-sm ${
+                        plan.highlighted ? "text-white/85" : "text-ink/80"
+                      }`}
                     >
-                      <Check className="mt-0.5 h-4 w-4 shrink-0 text-aurora-600" />
+                      <Check
+                        className={`mt-0.5 h-4 w-4 shrink-0 ${
+                          plan.highlighted ? "text-emerald-300" : "text-aurora-600"
+                        }`}
+                      />
                       {f}
                     </li>
                   ))}

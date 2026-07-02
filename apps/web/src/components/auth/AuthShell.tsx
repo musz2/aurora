@@ -25,10 +25,9 @@ export function AuthShell({
       </div>
 
       {/* Right — brand panel */}
-      <div className="relative hidden overflow-hidden bg-ink lg:block">
-        <div className="absolute inset-0 bg-aurora-gradient opacity-90" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_30%,rgba(255,255,255,0.25),transparent_55%)]" />
-        <div className="relative flex h-full flex-col justify-center p-14 text-white">
+      <div className="relative hidden overflow-hidden p-4 lg:block">
+        <div className="absolute inset-0 bg-aurora-wash" />
+        <div className="relative flex h-full flex-col justify-center rounded-3xl bg-ink p-14 text-white">
           <h2 className="max-w-md font-display text-5xl leading-tight">
             Turn every meeting into searchable intelligence.
           </h2>
@@ -44,7 +43,7 @@ export function AuthShell({
             ].map((f) => (
               <div
                 key={f.text}
-                className="flex items-center gap-3 rounded-xl bg-white/10 px-4 py-3 backdrop-blur"
+                className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3"
               >
                 <f.icon className="h-5 w-5" />
                 <span className="text-sm">{f.text}</span>

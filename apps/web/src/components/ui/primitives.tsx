@@ -393,14 +393,14 @@ export function SectionHeading({
   return (
     <div className={cn("max-w-2xl", center && "mx-auto text-center")}>
       {eyebrow && (
-        <span className="text-sm font-semibold uppercase tracking-widest text-aurora-600">
+        <span className="inline-flex items-center rounded-full border border-black/[0.08] bg-white px-3 py-1 text-xs font-semibold text-ink/70">
           {eyebrow}
         </span>
       )}
-      <h2 className="mt-3 font-display text-4xl leading-tight text-ink sm:text-5xl">
+      <h2 className="mt-4 font-display text-4xl leading-[1.05] text-ink sm:text-5xl">
         {title}
       </h2>
-      {subtitle && <p className="mt-4 text-lg text-muted">{subtitle}</p>}
+      {subtitle && <p className="mt-4 text-lg leading-relaxed text-muted">{subtitle}</p>}
     </div>
   );
 }
