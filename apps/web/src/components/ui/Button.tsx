@@ -3,16 +3,18 @@ import { Link } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import { Spinner } from "@/components/ui/primitives";
 
-type Variant = "primary" | "secondary" | "ghost" | "outline" | "danger";
+type Variant = "primary" | "secondary" | "ghost" | "outline" | "danger" | "gradient";
 type Size = "sm" | "md" | "lg";
 
+/* Shape language: rounded-rect buttons (reference anatomy); the `gradient`
+   variant is the single pill-shaped hero CTA. */
 const base =
-  "inline-flex items-center justify-center gap-2 rounded-full font-medium transition-all duration-200 cursor-pointer select-none disabled:opacity-50 disabled:pointer-events-none focus:outline-none focus-visible:ring-2 focus-visible:ring-aurora-400 focus-visible:ring-offset-2 active:scale-[0.98]";
+  "inline-flex items-center justify-center gap-2 rounded-xl font-medium transition-all duration-200 cursor-pointer select-none disabled:opacity-50 disabled:pointer-events-none focus:outline-none focus-visible:ring-2 focus-visible:ring-aurora-400 focus-visible:ring-offset-2 active:scale-[0.98]";
 
 const variants: Record<Variant, string> = {
-  primary: "bg-ink text-white shadow-sm hover:bg-black hover:shadow-md",
-  secondary:
-    "bg-aurora-gradient text-white hover:opacity-95 shadow-sm hover:shadow-glow",
+  primary: "bg-ink text-white hover:bg-black",
+  secondary: "bg-aurora-gradient text-white hover:opacity-95",
+  gradient: "!rounded-full bg-aurora-gradient text-white hover:opacity-95 hover:shadow-glow",
   ghost: "text-ink hover:bg-black/5",
   outline:
     "border border-black/15 bg-white text-ink hover:border-black/35 hover:bg-black/[0.03]",
@@ -21,8 +23,8 @@ const variants: Record<Variant, string> = {
 
 const sizes: Record<Size, string> = {
   sm: "px-4 py-2 text-sm",
-  md: "px-6 py-2.5 text-sm",
-  lg: "px-8 py-3.5 text-base",
+  md: "px-5 py-2.5 text-sm",
+  lg: "px-7 py-3.5 text-base",
 };
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {

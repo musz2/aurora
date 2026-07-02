@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { SectionHeading } from "@/components/ui/primitives";
+import { Reveal } from "@/components/ui/Reveal";
 import { HeroPreview } from "@/components/marketing/HeroPreview";
 import {
   CORE_FEATURES,
@@ -31,7 +32,7 @@ function Section({
   id?: string;
 }) {
   return (
-    <section id={id} className={`px-6 py-24 sm:px-8 ${className}`}>
+    <section id={id} className={`px-6 py-28 sm:px-8 ${className}`}>
       <div className="mx-auto max-w-7xl">{children}</div>
     </section>
   );
@@ -74,7 +75,7 @@ export function LandingPage() {
           </p>
 
           <div className="animate-fade-rise-delay-2 mt-10 flex flex-col items-center gap-5 sm:flex-row">
-            <Button to="/signup" variant="secondary" size="lg" className="px-12 py-4">
+            <Button to="/signup" variant="gradient" size="lg" className="px-12 py-4">
               Get Started for Free
             </Button>
             <Button to="/features" variant="ghost" size="lg" className="px-6">
@@ -109,28 +110,30 @@ export function LandingPage() {
         </div>
       </Section>
 
-      {/* ---------- PROBLEM ---------- */}
+      {/* ---------- PROBLEM — ghost statement + borderless columns ---------- */}
       <Section>
-        <SectionHeading
-          center
-          eyebrow="The problem"
-          title="Meetings are where knowledge goes to disappear"
-          subtitle="Conversations happen, decisions are made, and then it's all gone. Aurora makes sure nothing slips through."
-        />
-        <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <h2 className="display-section mx-auto max-w-4xl text-center">
+          <span className="text-ghost">Meetings are where</span>
+          <br />
+          <span className="text-ink">knowledge goes to disappear.</span>
+        </h2>
+        <p className="mx-auto mt-5 max-w-xl text-center text-lg leading-relaxed text-muted">
+          Conversations happen, decisions are made, and then it's all gone.
+          Aurora makes sure nothing slips through.
+        </p>
+        <div className="mx-auto mt-16 grid max-w-5xl gap-x-12 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
           {PROBLEMS.map((p, i) => (
             <motion.div
               key={p}
               initial={{ opacity: 0, y: 16 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
-              transition={{ delay: i * 0.05 }}
-              className="rounded-2xl border border-black/[0.06] bg-white p-6"
+              transition={{ delay: (i % 3) * 0.06 }}
             >
-              <span className="text-sm font-semibold text-red-500">
-                Problem {i + 1}
+              <span className="font-display text-sm text-ghost">
+                {String(i + 1).padStart(2, "0")}
               </span>
-              <p className="mt-2 text-lg text-ink">{p}</p>
+              <p className="mt-2 text-base leading-relaxed text-ink">{p}</p>
             </motion.div>
           ))}
         </div>
@@ -167,39 +170,34 @@ export function LandingPage() {
         </div>
       </Section>
 
-      {/* ---------- HOW IT WORKS ---------- */}
+      {/* ---------- HOW IT WORKS — ghost numerals, borderless ---------- */}
       <Section>
         <SectionHeading
           center
           eyebrow="How it works"
           title="From sign-up to shareable notes in nine steps"
         />
-        <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {HOW_IT_WORKS.map((s) => (
-            <div
-              key={s.step}
-              className="flex gap-4 rounded-2xl border border-black/[0.06] bg-white p-6"
-            >
-              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-aurora-50 font-display text-lg text-aurora-700">
-                {s.step}
+        <div className="mx-auto mt-16 grid max-w-5xl gap-x-12 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
+          {HOW_IT_WORKS.map((s, i) => (
+            <Reveal key={s.step} delay={(i % 3) * 60}>
+              <span className="font-display text-5xl leading-none text-ghost-light">
+                {String(s.step).padStart(2, "0")}
               </span>
-              <div>
-                <h3 className="font-semibold text-ink">{s.title}</h3>
-                <p className="mt-1 text-sm text-muted">{s.desc}</p>
-              </div>
-            </div>
+              <h3 className="mt-3 font-semibold text-ink">{s.title}</h3>
+              <p className="mt-1.5 text-sm leading-relaxed text-muted">{s.desc}</p>
+            </Reveal>
           ))}
         </div>
       </Section>
 
-      {/* ---------- CORE FEATURES ---------- */}
-      <Section className="bg-gradient-to-b from-aurora-50/40 to-white">
-        <SectionHeading
-          center
-          eyebrow="Core features"
-          title="Everything you need to capture meeting intelligence"
-        />
-        <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+      {/* ---------- CORE FEATURES — borderless text columns ---------- */}
+      <Section>
+        <h2 className="display-section mx-auto max-w-4xl text-center">
+          <span className="text-ghost">Built for meeting intelligence.</span>
+          <br />
+          <span className="text-ink">Everything you need, nothing extra.</span>
+        </h2>
+        <div className="mx-auto mt-16 grid max-w-5xl gap-x-12 gap-y-12 sm:grid-cols-2 lg:grid-cols-3">
           {CORE_FEATURES.map((f, i) => (
             <motion.div
               key={f.title}
@@ -207,13 +205,12 @@ export function LandingPage() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: (i % 3) * 0.05 }}
-              className="group rounded-2xl border border-black/[0.06] bg-white p-6 transition-all hover:-translate-y-1 hover:shadow-glass"
             >
-              <div className="grid h-11 w-11 place-items-center rounded-xl bg-aurora-50 text-aurora-700 transition-colors group-hover:bg-aurora-gradient group-hover:text-white">
+              <div className="grid h-10 w-10 place-items-center rounded-lg bg-aurora-50 text-aurora-700">
                 <f.icon className="h-5 w-5" />
               </div>
               <h3 className="mt-4 font-semibold text-ink">{f.title}</h3>
-              <p className="mt-2 text-sm text-muted">{f.desc}</p>
+              <p className="mt-1.5 text-sm leading-relaxed text-muted">{f.desc}</p>
             </motion.div>
           ))}
         </div>
@@ -226,16 +223,13 @@ export function LandingPage() {
           eyebrow="Use cases"
           title="Built for every kind of conversation"
         />
-        <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {USE_CASES.map((u) => (
-            <div
-              key={u.title}
-              className="rounded-2xl border border-black/[0.06] bg-white p-6"
-            >
-              <u.icon className="h-7 w-7 text-aurora-600" />
+        <div className="mx-auto mt-16 grid max-w-6xl gap-x-10 gap-y-12 sm:grid-cols-2 lg:grid-cols-4">
+          {USE_CASES.map((u, i) => (
+            <Reveal key={u.title} delay={(i % 4) * 60}>
+              <u.icon className="h-6 w-6 text-aurora-600" />
               <h3 className="mt-4 font-semibold text-ink">{u.title}</h3>
-              <p className="mt-2 text-sm text-muted">{u.desc}</p>
-            </div>
+              <p className="mt-1.5 text-sm leading-relaxed text-muted">{u.desc}</p>
+            </Reveal>
           ))}
         </div>
       </Section>

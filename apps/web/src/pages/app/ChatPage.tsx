@@ -135,10 +135,10 @@ export function ChatPage() {
           {messages.map((m) => (
             <div key={m.id}>
               <div
-                className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm leading-relaxed ${
+                className={`max-w-[80%] text-sm leading-relaxed ${
                   m.role === "user"
-                    ? "ml-auto bg-ink text-white"
-                    : "bg-aurora-50 text-ink"
+                    ? "ml-auto rounded-2xl rounded-br-md bg-ink px-4 py-3 text-white"
+                    : "rounded-2xl rounded-bl-md border border-black/[0.07] bg-white px-4 py-3 text-ink"
                 }`}
               >
                 {m.content}
@@ -178,20 +178,24 @@ export function ChatPage() {
             e.preventDefault();
             send(input);
           }}
-          className="flex items-center gap-2 border-t border-black/[0.06] p-3"
+          className="border-t border-black/[0.06] p-3"
         >
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask Aurora anything about your meetings…"
-            className="flex-1 rounded-xl border border-black/10 px-4 py-2.5 text-sm outline-none focus:border-aurora-400"
-          />
-          <button
-            type="submit"
-            className="grid h-10 w-10 place-items-center rounded-xl bg-ink text-white"
-          >
-            <Send className="h-4 w-4" />
-          </button>
+          {/* Composer bar — input + embedded send action in one surface */}
+          <div className="flex items-center gap-2 rounded-2xl border border-black/[0.08] bg-white py-1.5 pl-4 pr-1.5 transition focus-within:border-aurora-400 focus-within:ring-2 focus-within:ring-aurora-100">
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="Ask Aurora anything about your meetings…"
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted/70"
+            />
+            <button
+              type="submit"
+              aria-label="Send"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-ink text-white transition hover:bg-black active:scale-95"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
         </form>
       </Card>
     </div>

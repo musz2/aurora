@@ -224,15 +224,15 @@ export function TranscriptTimeline({
                 s.highlighted ? "bg-amber-50" : "hover:bg-black/[0.02]"
               )}
             >
-              <div className="flex gap-3">
-                <SpeakerAvatar name={s.speakerName} />
-                <div className="min-w-0 flex-1">
+              <div className="grid grid-cols-[3rem_1fr] gap-x-3">
+                <span className="pt-1 text-right font-mono text-[11px] tabular-nums text-muted/70">
+                  {formatClock(s.startTime)}
+                </span>
+                <div className="min-w-0 flex-1 border-l border-black/[0.06] pl-3">
                   <div className="flex flex-wrap items-center gap-2">
+                    <SpeakerAvatar name={s.speakerName} className="h-5 w-5 text-[8px]" />
                     <span className="text-sm font-semibold text-ink">
                       {s.speakerName}
-                    </span>
-                    <span className="text-xs text-muted">
-                      {formatClock(s.startTime)}
                     </span>
                     {s.edited && <Badge tone="slate">edited</Badge>}
                     {s.isDecision && (

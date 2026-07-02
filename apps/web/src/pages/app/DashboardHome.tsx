@@ -90,16 +90,16 @@ export function DashboardHome() {
         ))}
       </div>
 
-      {/* Stats */}
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard icon={Video} label="Total meetings" value={data?.totalMeetings ?? 0} />
-        <StatCard
+      {/* Stats — single flat strip with dividers */}
+      <Card className="mb-6 grid divide-y divide-black/[0.06] sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-4 lg:divide-x">
+        <StatCell icon={Video} label="Total meetings" value={data?.totalMeetings ?? 0} />
+        <StatCell
           icon={ListChecks}
           label="Open action items"
           value={data?.myActionItems.length ?? 0}
         />
-        <StatCard icon={Clock} label="Minutes used" value={data?.usage.usedMinutes ?? 0} />
-        <Card className="p-5">
+        <StatCell icon={Clock} label="Minutes used" value={data?.usage.usedMinutes ?? 0} />
+        <div className="flex flex-col justify-center p-5">
           {data ? (
             <UsageMeter used={data.usage.usedMinutes} limit={data.usage.limitMinutes} />
           ) : (
@@ -108,8 +108,8 @@ export function DashboardHome() {
               <div className="skeleton h-2 w-full" />
             </div>
           )}
-        </Card>
-      </div>
+        </div>
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Recent meetings */}
@@ -237,7 +237,7 @@ export function DashboardHome() {
   );
 }
 
-function StatCard({
+function StatCell({
   icon: Icon,
   label,
   value,
@@ -247,23 +247,23 @@ function StatCard({
   value: number;
 }) {
   return (
-    <Card className="flex items-center gap-4 p-5">
-      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-aurora-50 text-aurora-600">
+    <div className="flex items-center gap-4 p-5">
+      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-aurora-50 text-aurora-600">
         <Icon className="h-5 w-5" />
       </span>
       <div>
         <p className="font-display text-2xl tabular-nums text-ink">{value.toLocaleString()}</p>
-        <p className="text-sm text-muted">{label}</p>
+        <p className="text-xs font-medium text-muted">{label}</p>
       </div>
-    </Card>
+    </div>
   );
 }
 
 function SectionTitle({ title, to, label = "View all" }: { title: string; to: string; label?: string }) {
   return (
-    <div className="mb-3 flex items-center justify-between">
-      <h2 className="font-semibold text-ink">{title}</h2>
-      <Link to={to} className="text-sm text-aurora-600 hover:underline">
+    <div className="mb-3 flex items-baseline justify-between">
+      <h2 className="text-xs font-semibold uppercase tracking-wider text-muted">{title}</h2>
+      <Link to={to} className="text-sm font-medium text-aurora-600 hover:underline">
         {label}
       </Link>
     </div>

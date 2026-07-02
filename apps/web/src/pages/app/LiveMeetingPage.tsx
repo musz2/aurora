@@ -722,27 +722,6 @@ export function LiveMeetingPage() {
           ) : (
             <h1 className="font-display text-3xl text-ink">Host Console</h1>
           )}
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            {recording && (
-              <StatusPill tone={paused ? "muted" : "live"} pulse={!paused}>
-                {paused ? "PAUSED" : "REC"} {formatClock(elapsed)}
-              </StatusPill>
-            )}
-            {recording && !paused && (
-              <StatusPill tone={engineState === "error" ? "error" : engineState === "processing" ? "processing" : "success"}>
-                {ENGINE_LABEL[engineState]}
-              </StatusPill>
-            )}
-            {recording && connPill()}
-            {recording && mode === "demo" && (
-              <StatusPill tone="muted">Demo sample</StatusPill>
-            )}
-            <StatusPill tone="muted">
-              {config.services.liveTranscription
-                ? "Deepgram STT"
-                : "STT not configured"}
-            </StatusPill>
-          </div>
         </div>
 
         <div className="flex gap-2">
@@ -780,6 +759,37 @@ export function LiveMeetingPage() {
           )}
         </div>
       </div>
+
+      {/* Console status strip — one place for session state */}
+      <Card className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-3">
+        {recording ? (
+          <>
+            <StatusPill tone={paused ? "muted" : "live"} pulse={!paused}>
+              {paused ? "PAUSED" : "REC"}
+            </StatusPill>
+            <span className="font-display text-lg tabular-nums text-ink">
+              {formatClock(elapsed)}
+            </span>
+            <span className="h-4 w-px bg-black/10" />
+            {!paused && (
+              <StatusPill tone={engineState === "error" ? "error" : engineState === "processing" ? "processing" : "success"}>
+                {ENGINE_LABEL[engineState]}
+              </StatusPill>
+            )}
+            {connPill()}
+            {mode === "demo" && <StatusPill tone="muted">Demo sample</StatusPill>}
+          </>
+        ) : (
+          <span className="text-sm text-muted">
+            No session running — start one to open the console.
+          </span>
+        )}
+        <span className="ml-auto">
+          <StatusPill tone="muted">
+            {config.services.liveTranscription ? "Deepgram STT" : "STT not configured"}
+          </StatusPill>
+        </span>
+      </Card>
 
       {/* Honest engine banners */}
       {!config.services.liveTranscription && (

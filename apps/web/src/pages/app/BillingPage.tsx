@@ -168,14 +168,20 @@ export function BillingPage() {
               interactive
               className={cn(
                 "flex flex-col p-5",
-                isCurrent && "ring-2 ring-aurora-400"
+                isCurrent && "border-transparent bg-ink text-white shadow-lift"
               )}
             >
               <div className="flex items-center justify-between">
-                <h3 className="font-display text-xl text-ink">{plan.name}</h3>
-                {isCurrent && <Badge tone="indigo">Current</Badge>}
+                <h3 className={cn("font-display text-xl", isCurrent ? "text-white" : "text-ink")}>
+                  {plan.name}
+                </h3>
+                {isCurrent && (
+                  <span className="rounded-full bg-white/15 px-2.5 py-0.5 text-xs font-medium text-white">
+                    Current
+                  </span>
+                )}
               </div>
-              <p className="mt-2 font-display text-2xl text-ink">
+              <p className={cn("mt-2 font-display text-2xl", isCurrent ? "text-white" : "text-ink")}>
                 {plan.priceMonthly === null
                   ? "Custom"
                   : plan.priceMonthly === 0
@@ -186,9 +192,17 @@ export function BillingPage() {
                 {plan.features.slice(0, 4).map((f) => (
                   <li
                     key={f}
-                    className="flex items-start gap-2 text-xs text-ink/70"
+                    className={cn(
+                      "flex items-start gap-2 text-xs",
+                      isCurrent ? "text-white/80" : "text-ink/70"
+                    )}
                   >
-                    <Check className="mt-0.5 h-3.5 w-3.5 shrink-0 text-aurora-600" />
+                    <Check
+                      className={cn(
+                        "mt-0.5 h-3.5 w-3.5 shrink-0",
+                        isCurrent ? "text-emerald-300" : "text-aurora-600"
+                      )}
+                    />
                     {f}
                   </li>
                 ))}

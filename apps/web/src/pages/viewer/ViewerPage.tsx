@@ -87,19 +87,22 @@ export function ViewerPage() {
     >
       {session && (
         <div>
-          <div className="mb-4">
-            <h1 className="font-display text-3xl text-ink">{session.title}</h1>
-            <p className="mt-1.5 inline-flex items-center gap-1.5 text-sm text-muted">
+          <div className="mb-6 text-center">
+            <p className="kicker">Shared session</p>
+            <h1 className="display-section mt-2 text-ink">{session.title}</h1>
+            <p className="mt-3 inline-flex items-center gap-1.5 text-sm text-muted">
               <ShieldCheck className="h-4 w-4 text-emerald-500" />
               Public read-only view. Private assistant output, host notes, and controls are never
               visible here.
             </p>
-            {session.startedAt && <p className="mt-1 text-xs text-muted">{formatDate(session.startedAt)}</p>}
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            {session.startedAt && (
+              <p className="mt-1 text-xs text-muted">{formatDate(session.startedAt)}</p>
+            )}
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
               {session.participants.map((p) => (
                 <span
                   key={p}
-                  className="inline-flex items-center gap-1.5 rounded-full bg-white py-1 pl-1 pr-3 text-xs text-ink shadow-sm"
+                  className="inline-flex items-center gap-1.5 rounded-full border border-black/[0.07] bg-white py-1 pl-1 pr-3 text-xs text-ink"
                 >
                   <Avatar name={p} className="h-5 w-5 text-[9px]" />
                   {p}
@@ -151,11 +154,15 @@ export function ViewerPage() {
                   segments={segments}
                   interim={interim}
                   emptyState={
-                    <div className="flex h-full flex-col items-center justify-center text-center">
-                      <Radio className="h-8 w-8 text-aurora-400" />
-                      <p className="mt-3 text-sm text-muted">
-                        {session.ended ? "This session has ended." : "Waiting for the host to start speaking…"}
+                    <div className="flex h-full flex-col items-center justify-center px-6 text-center">
+                      <p className="font-display text-3xl leading-tight text-ghost sm:text-4xl">
+                        {session.ended ? "This session" : "Waiting for the host"}
+                        <br />
+                        <span className="text-ink/70">
+                          {session.ended ? "has ended." : "to start speaking…"}
+                        </span>
                       </p>
+                      <Radio className="mt-6 h-6 w-6 text-aurora-400" />
                     </div>
                   }
                 />

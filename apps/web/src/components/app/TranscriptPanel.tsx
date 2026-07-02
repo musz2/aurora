@@ -84,34 +84,34 @@ export function TranscriptPanel({
         ) : (
           <>
             {groups.map((g, i) => (
-              <div key={i} className="flex gap-3 transcript-line">
-                <Avatar name={g.speakerName} className="h-8 w-8 text-[10px]" />
-                <div className="min-w-0">
+              <div key={i} className="transcript-line grid grid-cols-[3rem_1fr] gap-x-3">
+                <span className="pt-0.5 text-right font-mono text-[11px] tabular-nums text-muted/70">
+                  {formatClock(g.startTime)}
+                </span>
+                <div className="min-w-0 border-l border-black/[0.06] pl-3">
                   <div className="flex items-center gap-2">
+                    <Avatar name={g.speakerName} className="h-5 w-5 text-[8px]" />
                     <span className="text-sm font-semibold text-ink">
                       {g.speakerName}
                     </span>
-                    <span className="text-xs text-muted">
-                      {formatClock(g.startTime)}
-                    </span>
                   </div>
-                  <p className="mt-0.5 text-sm leading-relaxed text-ink/80">
+                  <p className="mt-1 text-sm leading-relaxed text-ink/80">
                     {g.text}
                   </p>
                 </div>
               </div>
             ))}
             {interim && interim.text && (
-              <div className="flex gap-3 opacity-60">
-                <Avatar
-                  name={interim.speakerName}
-                  className="h-8 w-8 text-[10px]"
-                />
-                <div className="min-w-0">
-                  <span className="text-sm font-semibold text-ink">
-                    {interim.speakerName}
-                  </span>
-                  <p className="mt-0.5 text-sm italic leading-relaxed text-muted">
+              <div className="grid grid-cols-[3rem_1fr] gap-x-3 opacity-60">
+                <span className="pt-0.5 text-right font-mono text-[11px] text-muted/60">…</span>
+                <div className="min-w-0 border-l border-black/[0.06] pl-3">
+                  <div className="flex items-center gap-2">
+                    <Avatar name={interim.speakerName} className="h-5 w-5 text-[8px]" />
+                    <span className="text-sm font-semibold text-ink">
+                      {interim.speakerName}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-sm italic leading-relaxed text-muted">
                     {interim.text}
                     <span className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse-dot bg-aurora-500 align-middle" />
                   </p>

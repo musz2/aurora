@@ -139,7 +139,7 @@ export function DashboardLayout() {
         ))}
       </nav>
       <div className="border-t border-black/[0.06] p-3">
-        <div className="rounded-xl border border-aurora-100/70 bg-gradient-to-br from-aurora-50 to-white p-4">
+        <div className="rounded-xl border border-black/[0.07] bg-white p-4">
           {user?.developerBypass ? (
             <p className="text-xs font-semibold text-emerald-700">⭐ Developer — full access</p>
           ) : (
@@ -206,15 +206,15 @@ export function DashboardLayout() {
           <div className="ml-auto flex items-center gap-2">
             <NavLink
               to="/app/upload"
-              className="hidden items-center gap-2 rounded-full border border-black/10 bg-white px-4 py-2 text-sm font-medium text-ink transition hover:border-black/30 hover:bg-black/[0.02] md:flex"
+              className="hidden items-center gap-2 rounded-xl border border-black/10 bg-white px-4 py-2 text-sm font-medium text-ink transition hover:border-black/30 hover:bg-black/[0.02] md:flex"
             >
               <Plus className="h-4 w-4" /> New meeting
             </NavLink>
             <NavLink
               to="/app/live"
-              className="flex items-center gap-2 rounded-full bg-aurora-gradient px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:opacity-95 hover:shadow-glow active:scale-[0.98]"
+              className="flex items-center gap-2 rounded-xl bg-ink px-4 py-2 text-sm font-medium text-white transition hover:bg-black active:scale-[0.98]"
             >
-              <span className="live-dot h-2 w-2 animate-pulse-dot rounded-full bg-white" />
+              <span className="live-dot h-2 w-2 animate-pulse-dot rounded-full bg-red-400" />
               Start meeting
             </NavLink>
 
